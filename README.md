@@ -34,7 +34,7 @@ Full rationale, scope boundaries, and the Free → Team → Enterprise trajector
 From a release (recommended — prebuilt tarball, no local build needed):
 
 ```bash
-npm install -g https://github.com/CodeMath/agent-enviorment-manager/releases/download/v0.2.0/agent-environment-manager-0.2.0.tgz
+npm install -g https://github.com/CodeMath/agent-enviorment-manager/releases/download/v0.4.0/agent-environment-manager-0.4.0.tgz
 aem --version
 ```
 
@@ -77,11 +77,21 @@ aem diff --profile personal-default
 aem apply --profile personal-default
 ```
 
+Declare a project baseline and keep it honest:
+
+```bash
+cd my-repo
+aem init                 # writes .aem/desired-state.yaml (project scope only)
+git add .aem/desired-state.yaml
+aem drift                # auto-resolves the project baseline in this directory
+aem doctor               # includes drift_detected findings for the baseline
+```
+
 ## Commands
 
 | Command | Writes vendor config? | Purpose |
 | --- | --- | --- |
-| `aem scan [--json] [--vendor codex\|claude\|all] [--project <path>]` | no | Detect runtimes, config sources, MCP servers, instructions, skills |
+| `aem scan [--json] [--vendor <id>\|all] [--project <path>]` | no | Detect runtimes, config sources, MCP servers, instructions, skills |
 | `aem init [--force]` | no (writes `<cwd>/.aem/`) | Generate a committable project-scope baseline (`.aem/desired-state.yaml`) |
 | `aem doctor [--json] [--vendor] [--profile <name>]` | no | Findings: `missing_env`, `secret_inline`, `broken_path`, `duplicate_mcp`, `dangerous_command`, `unknown_config`, `stale_profile`, `drift_detected`, `unsupported_version` |
 | `aem export --profile <name> [--out <path>] [--force]` | no | Current state → redacted DesiredState YAML |
@@ -158,6 +168,10 @@ Read-only vendors are declared in a single declarative catalog (`src/adapters/ca
   profiles/*.yaml      # DesiredState profiles (schemaVersion aem.dev/v0)
   backups/<ts>/<vendor>/...
   audit/events.jsonl   # append-only local audit log
+  adapters/cache.json  # binary version cache (path + mtime keyed)
+
+<repo>/.aem/
+  desired-state.yaml   # committable project-scope baseline (aem init)
 ```
 
 ## Development
@@ -185,12 +199,19 @@ src/
   adapters/
     codex/             # ~/.codex/config.toml (TOML) — full apply support
     claude-code/       # ~/.claude.json, .mcp.json (JSON) — full apply support
-    catalog.ts         # declarative read-only vendor catalog (10 vendors)
+    catalog.ts         # declarative read-only vendor catalog (41 vendors)
   output/              # human-readable text rendering
 ```
 
 Adapters implement `read / doctor / backupTargets / apply`; one adapter failing never blocks the others. Adding a read-only vendor is one `VendorSpec` entry in the catalog — the canonical model and planner stay untouched.
 
-## Roadmap
+## Roadmap & status
 
-This is the Phase 1 **Local MVP** from `_docs/02-side-project-roadmap.md`. Next: `aem init`/`aem status`/profile templates (Phase 2, personal productivity), then `.aem/team.yaml` + CI checks (Phase 3, team baseline), then registry/governance connectors.
+Phases refer to `_docs/02-side-project-roadmap.md`; implementation status is tracked in [`_docs/04-implementation-status.md`](_docs/04-implementation-status.md).
+
+- **Phase 1 — Local MVP: complete** (v0.1.0). All eight core commands, Claude Code + Codex full adapters, safe apply with backups, drift detection, secret redaction. Milestones M0–M5 done.
+- **Phase 2 — Personal productivity: partial.** Done ahead of plan: `aem init` + project-scope profiles (v0.4.0), machine-portable profiles (`~`/`${PROJECT_ROOT}`, v0.3.0), self-update via GitHub releases (v0.1.0+). Remaining: `aem status`, `aem history`, profile templates, shell completion, Homebrew, CI read-only check.
+- **Phase 3 — Team baseline: next.** `.aem/team.yaml`, policy lint, `aem check --team`, role profiles. Project profiles (check-only) are the designed on-ramp.
+- **Phases 4–5 — Governance connectors / enterprise control plane: not started** (deliberately — the roadmap forbids SaaS before the Free/Team CLI is proven).
+
+Beyond the original plan: the vendor catalog covers the full [tokscale](https://github.com/junhoyeo/tokscale) agent inventory (43 vendors), and releases ship as prebuilt tarball assets consumed by `aem update`.
