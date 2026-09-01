@@ -14,6 +14,8 @@ interface ReleaseInfo {
   name?: string;
   url: string;
   publishedAt?: string;
+  /** prebuilt npm tarball attached to the release (preferred install source) */
+  tarballUrl?: string;
 }
 
 export async function fetchLatestRelease(): Promise<ReleaseInfo> {
@@ -38,12 +40,15 @@ export async function fetchLatestRelease(): Promise<ReleaseInfo> {
     name?: string;
     html_url: string;
     published_at?: string;
+    assets?: { name: string; browser_download_url: string }[];
   };
+  const tarball = body.assets?.find((a) => a.name.endsWith(".tgz"));
   return {
     tag: body.tag_name,
     name: body.name,
     url: body.html_url,
     publishedAt: body.published_at,
+    tarballUrl: tarball?.browser_download_url,
   };
 }
 
@@ -75,16 +80,15 @@ export async function runUpdate(opts: { check?: boolean; yes?: boolean }): Promi
   process.stdout.write(
     yellow(`Update available: ${installed} -> ${latest}\n`),
   );
+  const spec = release.tarballUrl ?? `github:${RELEASE_REPO}#${release.tag}`;
   if (opts.check) {
     process.stdout.write(
       `Run ${bold("aem update")} to install, or:\n` +
-        dim(`  npm install -g github:${RELEASE_REPO}#${release.tag}\n`),
+        dim(`  npm install -g ${spec}\n`),
     );
     process.exitCode = 4; // update available (machine-checkable)
     return;
   }
-
-  const spec = `github:${RELEASE_REPO}#${release.tag}`;
   process.stdout.write(`Installing ${dim(spec)} via npm...\n`);
   const res = spawnSync("npm", ["install", "-g", spec], {
     stdio: "inherit",

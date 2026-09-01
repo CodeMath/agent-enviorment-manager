@@ -10,10 +10,10 @@ Design docs live in [`_docs/`](_docs/) (philosophy & policy, roadmap, MVP functi
 
 ## Install (local production)
 
-From a release tag (recommended):
+From a release (recommended — prebuilt tarball, no local build needed):
 
 ```bash
-npm install -g github:CodeMath/agent-enviorment-manager#v0.1.0
+npm install -g https://github.com/CodeMath/agent-enviorment-manager/releases/download/v0.1.0/agent-environment-manager-0.1.0.tgz
 aem --version
 ```
 

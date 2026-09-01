@@ -17,6 +17,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "bun test",
+    "release:pack": "npm run build && npm pack",
     "prepare": "npm run build"
   },
   "dependencies": {
