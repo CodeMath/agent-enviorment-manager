@@ -11,6 +11,8 @@ import {
   runProfileUse,
 } from "./commands/profile.js";
 import { runScan } from "./commands/scan.js";
+import { runUpdate } from "./commands/update.js";
+import { currentVersion } from "../core/version.js";
 
 const program = new Command();
 
@@ -19,7 +21,7 @@ program
   .description(
     "Agent Environment Manager - detect, normalize and manage your local AI agent environment (Claude Code, Codex).",
   )
-  .version("0.1.0");
+  .version(currentVersion());
 
 program
   .command("scan")
@@ -95,5 +97,11 @@ program
   .option("--vendor <vendor>", "codex | claude | all", "all")
   .option("--json", "machine-readable JSON output")
   .action((opts) => runDrift(opts));
+
+program
+  .command("update")
+  .description("Check GitHub releases for a newer aem version and self-update")
+  .option("--check", "only check; exit code 4 when an update is available")
+  .action((opts) => runUpdate(opts));
 
 program.parseAsync(process.argv);

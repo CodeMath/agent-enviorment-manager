@@ -10,13 +10,28 @@ Design docs live in [`_docs/`](_docs/) (philosophy & policy, roadmap, MVP functi
 
 ## Install (local production)
 
+From a release tag (recommended):
+
 ```bash
-npm install          # deps + build (prepare hook)
-npm install -g .     # installs the `aem` binary
+npm install -g github:CodeMath/agent-enviorment-manager#v0.1.0
 aem --version
 ```
 
+From a checkout:
+
+```bash
+npm install          # deps + build (prepare hook)
+npm install -g .     # installs the `aem` binary
+```
+
 Requires Node >= 20. Tests run with `bun test`.
+
+Upgrade later with the built-in updater:
+
+```bash
+aem update --check   # exit 4 when a newer release exists
+aem update           # installs the latest GitHub release
+```
 
 ## Quick start
 
@@ -53,8 +68,11 @@ aem apply --profile personal-default
 | `aem diff [--profile <name>] [--json]` | no | Change plan (add/update/remove/no-op) — same engine as apply |
 | `aem apply [--profile] [--dry-run] [--yes]` | **yes** (with backup) | Materialize the profile into vendor-native config |
 | `aem drift [--profile] [--json]` | no | MCP/instruction/skill/runtime-version drift vs profile (exit 3 on drift) |
+| `aem update [--check]` | no (updates aem itself) | Check GitHub releases; self-update via `npm install -g` from the release tag |
 
-Exit codes: `0` ok · `1` command error · `2` doctor found error/critical · `3` drift detected.
+Exit codes: `0` ok · `1` command error · `2` doctor found error/critical · `3` drift detected · `4` update available (`update --check`).
+
+`update` is the only command that touches the network, and only when you run it — scan/doctor/diff/apply stay fully offline (local-first policy).
 
 ## What gets managed vs observed
 
