@@ -10,8 +10,65 @@ import type {
   SkillPack,
 } from "../core/model/types.js";
 import { isSecret, redactDeep } from "../core/redaction/redact.js";
+import { aemDir } from "../core/storage/paths.js";
 import type { AdapterContext } from "./types.js";
 
+function resolveOnPath(
+  binary: string,
+  env: Record<string, string | undefined>,
+): string | undefined {
+  if (binary.includes("/")) {
+    return fs.existsSync(binary) ? binary : undefined;
+  }
+  for (const dir of (env.PATH ?? "").split(":").filter(Boolean)) {
+    const candidate = path.join(dir, binary);
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch {
+      /* keep searching */
+    }
+  }
+  return undefined;
+}
+
+interface VersionCacheEntry {
+  path: string;
+  mtimeMs: number;
+  version?: string;
+}
+
+function versionCachePath(): string {
+  return path.join(aemDir(), "adapters", "cache.json");
+}
+
+let versionCache: Record<string, VersionCacheEntry> | undefined;
+
+function loadVersionCache(): Record<string, VersionCacheEntry> {
+  if (versionCache) return versionCache;
+  try {
+    versionCache = JSON.parse(fs.readFileSync(versionCachePath(), "utf8"));
+  } catch {
+    versionCache = {};
+  }
+  return versionCache!;
+}
+
+function saveVersionCache(): void {
+  if (!versionCache) return;
+  try {
+    fs.mkdirSync(path.dirname(versionCachePath()), { recursive: true });
+    fs.writeFileSync(versionCachePath(), JSON.stringify(versionCache, null, 2));
+  } catch {
+    /* cache is best-effort */
+  }
+}
+
+/**
+ * Detect a vendor binary and its version. Results are cached in
+ * ~/.aem/adapters/cache.json keyed by binary path + mtime so repeated
+ * scans stay fast even with many vendors.
+ */
 export function detectVersion(
   ctx: AdapterContext,
   binary: string,
@@ -20,15 +77,36 @@ export function detectVersion(
   if (!ctx.allowExec) {
     return { installed: false };
   }
-  const res = spawnSync(binary, args, {
+  const binPath = resolveOnPath(binary, ctx.env);
+  if (!binPath) return { installed: false };
+
+  let mtimeMs = 0;
+  try {
+    mtimeMs = fs.statSync(binPath).mtimeMs;
+  } catch {
+    /* stat failure: skip cache */
+  }
+  const cache = loadVersionCache();
+  const cached = cache[binary];
+  if (cached && cached.path === binPath && cached.mtimeMs === mtimeMs) {
+    return { installed: true, version: cached.version };
+  }
+
+  const res = spawnSync(binPath, args, {
     encoding: "utf8",
     timeout: 4000,
     env: process.env,
   });
-  if (res.error || res.status !== 0) return { installed: false };
-  const out = (res.stdout || "").trim();
-  const match = out.match(/(\d+\.\d+[\.\d]*)/);
-  return { installed: true, version: match?.[1] ?? out.slice(0, 40) };
+  let version: string | undefined;
+  if (!res.error && res.status === 0) {
+    const out = (res.stdout || "").trim();
+    const match = out.match(/(\d+\.\d+[\.\d]*)/);
+    version = match?.[1] ?? (out ? out.slice(0, 40) : undefined);
+  }
+  cache[binary] = { path: binPath, mtimeMs, version };
+  saveVersionCache();
+  // binary exists on PATH -> installed even when --version fails
+  return { installed: true, version };
 }
 
 export function configSource(

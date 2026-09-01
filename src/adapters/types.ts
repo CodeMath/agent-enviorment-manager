@@ -32,6 +32,8 @@ export interface AgentRuntimeAdapter {
   id: string;
   displayName: string;
   adapterVersion: string;
+  /** false = detect/doctor/drift only; planner and apply skip this vendor */
+  canApply: boolean;
 
   /** discover + read vendor config into the canonical model */
   read(ctx: AdapterContext): RuntimeState;

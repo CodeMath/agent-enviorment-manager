@@ -21,18 +21,27 @@ export function snapshotToDesiredState(
   name: string,
   description?: string,
 ): DesiredState {
-  const mcpById = new Map<string, DesiredMcpServer>();
+  // Same-id servers are merged across runtimes only when their definitions
+  // are equivalent; vendor-specific variants (e.g. different --agent args)
+  // stay as separate entries with disjoint allowedRuntimes so drift does
+  // not report false positives.
+  const mcpEntries: DesiredMcpServer[] = [];
+
+  const signature = (s: {
+    command?: { executable: string; args: string[] };
+    url?: string;
+    enabled: boolean;
+  }) =>
+    JSON.stringify([
+      s.command?.executable ?? null,
+      s.command?.args ?? null,
+      s.url ?? null,
+      s.enabled,
+    ]);
 
   for (const runtime of snapshot.runtimes) {
     for (const server of runtime.mcpServers) {
-      const existing = mcpById.get(server.id);
-      if (existing) {
-        if (!existing.allowedRuntimes.includes(runtime.id)) {
-          existing.allowedRuntimes.push(runtime.id);
-        }
-        continue;
-      }
-      mcpById.set(server.id, {
+      const desired: DesiredMcpServer = {
         id: server.id,
         enabled: server.enabled,
         allowedRuntimes: [runtime.id],
@@ -46,7 +55,17 @@ export function snapshotToDesiredState(
         url: server.url,
         env: desiredEnv(server.env),
         raw: server.raw,
-      });
+      };
+      const existing = mcpEntries.find(
+        (e) => e.id === server.id && signature(e) === signature(desired),
+      );
+      if (existing) {
+        if (!existing.allowedRuntimes.includes(runtime.id)) {
+          existing.allowedRuntimes.push(runtime.id);
+        }
+      } else {
+        mcpEntries.push(desired);
+      }
     }
   }
 
@@ -70,7 +89,7 @@ export function snapshotToDesiredState(
         enabled: r.installed,
       })),
     },
-    mcpServers: [...mcpById.values()],
+    mcpServers: mcpEntries,
     instructions: snapshot.runtimes.flatMap((r) =>
       r.instructionPacks.map((p) => ({
         id: p.id,

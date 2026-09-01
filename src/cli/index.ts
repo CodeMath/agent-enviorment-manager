@@ -27,7 +27,7 @@ program
   .command("scan")
   .description("Detect installed agent runtimes, MCP servers, instructions and skills")
   .option("--json", "machine-readable JSON output")
-  .option("--vendor <vendor>", "codex | claude | all", "all")
+  .option("--vendor <vendor>", "vendor id (codex, claude, gemini, cursor, ...) or all", "all")
   .option("--project <path>", "project directory for project-scope config")
   .action((opts) => runScan(opts));
 
@@ -35,7 +35,7 @@ program
   .command("doctor")
   .description("Diagnose risky, broken or missing environment configuration")
   .option("--json", "machine-readable JSON output")
-  .option("--vendor <vendor>", "codex | claude | all", "all")
+  .option("--vendor <vendor>", "vendor id (codex, claude, gemini, cursor, ...) or all", "all")
   .option("--profile <name>", "also check drift against a profile")
   .option("--project <path>", "project directory for project-scope config")
   .action((opts) => runDoctorCommand(opts));
@@ -45,7 +45,7 @@ program
   .description("Save the current environment as a redacted desired-state profile")
   .requiredOption("--profile <name>", "profile name")
   .option("--out <path>", "write to a file instead of the local profile store")
-  .option("--vendor <vendor>", "codex | claude | all", "all")
+  .option("--vendor <vendor>", "vendor id (codex, claude, gemini, cursor, ...) or all", "all")
   .option("--force", "overwrite an existing profile")
   .action((opts) => runExport(opts));
 
@@ -77,7 +77,7 @@ program
   .command("diff")
   .description("Show the change plan between a profile and the current environment")
   .option("--profile <name>", "profile name (defaults to active profile)")
-  .option("--vendor <vendor>", "codex | claude | all", "all")
+  .option("--vendor <vendor>", "vendor id (codex, claude, gemini, cursor, ...) or all", "all")
   .option("--json", "machine-readable JSON output")
   .action((opts) => runDiff(opts));
 
@@ -85,7 +85,7 @@ program
   .command("apply")
   .description("Apply a profile to vendor-native config (with backup)")
   .option("--profile <name>", "profile name (defaults to active profile)")
-  .option("--vendor <vendor>", "codex | claude | all", "all")
+  .option("--vendor <vendor>", "vendor id (codex, claude, gemini, cursor, ...) or all", "all")
   .option("--dry-run", "show the change plan without touching any file")
   .option("--yes", "apply without interactive confirmation")
   .action((opts) => runApply(opts));
@@ -94,7 +94,7 @@ program
   .command("drift")
   .description("Detect drift between a profile and the current environment")
   .option("--profile <name>", "profile name (defaults to active profile)")
-  .option("--vendor <vendor>", "codex | claude | all", "all")
+  .option("--vendor <vendor>", "vendor id (codex, claude, gemini, cursor, ...) or all", "all")
   .option("--json", "machine-readable JSON output")
   .action((opts) => runDrift(opts));
 

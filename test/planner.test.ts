@@ -69,6 +69,47 @@ describe("planner", () => {
   });
 });
 
+describe("desired-state merge", () => {
+  test("same-id servers with divergent args stay per-runtime (no false drift)", () => {
+    const { ctx, snapshot } = fixtureWorld();
+    // simulate a vendor-specific variant of the same server id
+    snapshot.runtimes
+      .find((r) => r.id === "claude-code")!
+      .mcpServers.push({
+        id: "pencil",
+        enabled: true,
+        transport: "stdio",
+        command: { executable: "/opt/pencil", args: ["--agent", "claudeCodeCLI"] },
+        env: {},
+        sourcePath: "x",
+      });
+    snapshot.runtimes
+      .find((r) => r.id === "codex")!
+      .mcpServers.push({
+        id: "pencil",
+        enabled: true,
+        transport: "stdio",
+        command: { executable: "/opt/pencil", args: ["--agent", "codexCLI"] },
+        env: {},
+        sourcePath: "y",
+      });
+    const desired = snapshotToDesiredState(snapshot, "p");
+    const pencils = desired.mcpServers.filter((s) => s.id === "pencil");
+    expect(pencils.length).toBe(2); // divergent variants kept separate
+    const report = detectDrift(desired, snapshot, "p");
+    expect(report.items.filter((i) => i.resourceRef === "mcp.pencil")).toEqual([]);
+  });
+
+  test("identical same-id servers are merged across runtimes", () => {
+    const { snapshot } = fixtureWorld();
+    const desired = snapshotToDesiredState(snapshot, "p");
+    // playwright/leaky exist identically in both fixture vendors? leaky does
+    const leaky = desired.mcpServers.filter((s) => s.id === "leaky");
+    expect(leaky.length).toBe(1);
+    expect(leaky[0]!.allowedRuntimes.sort()).toEqual(["claude-code", "codex"]);
+  });
+});
+
 describe("drift", () => {
   test("no drift right after export", () => {
     const { ctx, snapshot, desired } = fixtureWorld();

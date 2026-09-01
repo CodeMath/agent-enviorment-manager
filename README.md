@@ -74,10 +74,32 @@ Exit codes: `0` ok · `1` command error · `2` doctor found error/critical · `3
 
 `update` is the only command that touches the network, and only when you run it — scan/doctor/diff/apply stay fully offline (local-first policy).
 
+## Supported vendors
+
+Vendor inventory cross-checked against the AI coding agent list maintained by [tokscale](https://github.com/junhoyeo/tokscale).
+
+| Vendor | Detect / Doctor / Drift | Apply | Config read |
+| --- | :---: | :---: | --- |
+| Codex | ✅ | ✅ | `~/.codex/config.toml` (`[mcp_servers.*]`), `AGENTS.md`, skills |
+| Claude Code | ✅ | ✅ | `~/.claude.json` (`mcpServers`), `.mcp.json`, settings, `CLAUDE.md`, skills/agents |
+| Gemini CLI | ✅ | read-only | `~/.gemini/settings.json` (`mcpServers`), `GEMINI.md` |
+| Qwen Code | ✅ | read-only | `~/.qwen/settings.json`, `QWEN.md` |
+| Cursor | ✅ | read-only | `~/.cursor/mcp.json`, project `.cursor/mcp.json`, `.cursorrules` |
+| GitHub Copilot CLI | ✅ | read-only | `~/.copilot/mcp-config.json`, `.github/copilot-instructions.md` |
+| OpenCode | ✅ | read-only | `~/.config/opencode/opencode.json` (`mcp`, array-command form), project `opencode.json` |
+| Amp | ✅ | read-only | `~/.config/amp/settings.json` (`amp.mcpServers`) |
+| Kiro | ✅ | read-only | `~/.kiro/settings/mcp.json`, project `.kiro/settings/mcp.json`, steering |
+| Factory Droid | ✅ | read-only | `~/.factory/mcp.json` |
+| Goose | ✅ (detect) | read-only | `~/.config/goose/config.yaml` |
+| Zed Agent | ✅ | read-only | `~/.config/zed/settings.json` (`context_servers`) |
+
+Read-only vendors are declared in a single declarative catalog (`src/adapters/catalog.ts`); their MCP servers are normalized into the same canonical model, so `doctor` (inline secrets, missing env, broken paths, cross-vendor duplicates) and `drift` work across all of them. Promoting a vendor to full apply support means implementing `apply`/`backupTargets` for it.
+
 ## What gets managed vs observed
 
 - **Managed by apply (MVP):** MCP servers — Codex `~/.codex/config.toml` `[mcp_servers.*]`, Claude Code `~/.claude.json` `mcpServers`. Servers present locally but absent from the profile are left untouched (surfaced by `drift`, not deleted).
-- **Observed read-only:** instructions (`AGENTS.md`, `CLAUDE.md`), skills/agents directories, config sources, runtime versions. These feed `scan`/`doctor`/`drift`.
+- **Observed read-only:** instructions (`AGENTS.md`, `CLAUDE.md`), skills/agents directories, config sources, runtime versions, and all catalog vendors above. These feed `scan`/`doctor`/`drift` and are recorded in exported profiles.
+- Vendor binary versions are cached in `~/.aem/adapters/cache.json` (keyed by binary path + mtime) so repeated scans stay fast (<0.1s warm).
 
 ## Safety model
 

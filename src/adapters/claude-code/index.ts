@@ -80,6 +80,7 @@ export const claudeCodeAdapter: AgentRuntimeAdapter = {
   id: "claude-code",
   displayName: "Claude Code",
   adapterVersion: ADAPTER_VERSION,
+  canApply: true,
 
   read(ctx: AdapterContext): RuntimeState {
     const warnings: string[] = [];

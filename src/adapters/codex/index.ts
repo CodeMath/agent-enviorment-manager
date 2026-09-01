@@ -69,6 +69,7 @@ export const codexAdapter: AgentRuntimeAdapter = {
   id: "codex",
   displayName: "Codex",
   adapterVersion: ADAPTER_VERSION,
+  canApply: true,
 
   read(ctx: AdapterContext): RuntimeState {
     const warnings: string[] = [];

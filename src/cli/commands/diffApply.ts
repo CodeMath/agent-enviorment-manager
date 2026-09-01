@@ -66,6 +66,7 @@ export async function runApply(opts: {
   const adapterVersions: Record<string, string> = {};
 
   for (const adapter of setup.adapters) {
+    if (!adapter.canApply) continue;
     const changes = real.filter((c) => c.runtime === adapter.id);
     if (changes.length === 0) continue;
     adapterVersions[adapter.id] = adapter.adapterVersion;

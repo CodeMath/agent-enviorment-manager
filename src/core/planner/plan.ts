@@ -37,6 +37,7 @@ export function buildChangePlan(
   );
 
   for (const adapter of adapters) {
+    if (!adapter.canApply) continue; // read-only vendors: drift/doctor only
     if (!targetRuntimes.has(adapter.id)) continue;
     const runtime = snapshot.runtimes.find((r) => r.id === adapter.id);
     if (!runtime || !runtime.installed) continue;
