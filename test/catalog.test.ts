@@ -18,13 +18,85 @@ function byId(id: string) {
 
 describe("vendor catalog", () => {
   test("all catalog adapters are read-only and registered", () => {
-    expect(VENDOR_CATALOG.length).toBeGreaterThanOrEqual(10);
+    expect(VENDOR_CATALOG.length).toBeGreaterThanOrEqual(40);
     for (const a of CATALOG_ADAPTERS) {
       expect(a.canApply).toBe(false);
       expect(ALL_ADAPTERS.some((x) => x.id === a.id)).toBe(true);
       expect(selectAdapters(a.id)[0]!.id).toBe(a.id);
     }
     expect(selectAdapters("factory")[0]!.id).toBe("droid"); // alias
+  });
+
+  test("catalog invariants: unique ids, no apply collisions", () => {
+    const ids = ALL_ADAPTERS.map((a) => a.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    // full-support adapters keep exclusive apply rights
+    expect(ALL_ADAPTERS.filter((a) => a.canApply).map((a) => a.id).sort()).toEqual([
+      "claude-code",
+      "codex",
+    ]);
+  });
+
+  test("every catalog adapter tolerates an empty home (no crash, not installed)", () => {
+    const home = makeTempHome();
+    const ctx = ctxFor(home);
+    for (const a of CATALOG_ADAPTERS) {
+      const state = a.read(ctx);
+      expect(state.installed).toBe(false);
+      expect(state.mcpServers).toEqual([]);
+      expect(state.warnings).toEqual([]);
+    }
+  });
+
+  test("presence-dir detection works for detect-tier vendors", () => {
+    const home = makeTempHome();
+    for (const dir of [".gjc", ".jcode", ".local/share/devin", ".gemini/antigravity-cli"]) {
+      fs.mkdirSync(path.join(home, dir), { recursive: true });
+    }
+    const ctx = ctxFor(home);
+    for (const id of ["gjc", "jcode", "devin", "antigravity"]) {
+      expect(byId(id).read(ctx).installed).toBe(true);
+    }
+    expect(byId("warp").read(ctx).installed).toBe(false);
+  });
+
+  test("crush: mcp key in user + project config", () => {
+    const home = makeTempHome();
+    const project = path.join(home, "project");
+    fs.mkdirSync(path.join(home, ".config", "crush"), { recursive: true });
+    fs.mkdirSync(project, { recursive: true });
+    fs.writeFileSync(
+      path.join(home, ".config", "crush", "crush.json"),
+      JSON.stringify({
+        mcp: { u1: { type: "stdio", command: "npx", args: ["-y", "u1"] } },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(project, "crush.json"),
+      JSON.stringify({ mcp: { p1: { type: "http", url: "https://mcp.example.com" } } }),
+    );
+    const state = byId("crush").read(ctxFor(home, project));
+    expect(state.installed).toBe(true);
+    expect(state.mcpServers.map((s) => s.id).sort()).toEqual(["p1", "u1"]);
+    expect(state.mcpServers.find((s) => s.id === "p1")!.transport).toBe("http");
+  });
+
+  test("cline: VS Code globalStorage mcp settings (macOS layout)", () => {
+    const home = makeTempHome();
+    const settingsDir = path.join(
+      home,
+      "Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings",
+    );
+    fs.mkdirSync(settingsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(settingsDir, "cline_mcp_settings.json"),
+      JSON.stringify({
+        mcpServers: { srv: { command: "npx", args: ["-y", "srv"], disabled: false } },
+      }),
+    );
+    const state = byId("cline").read(ctxFor(home));
+    expect(state.installed).toBe(true);
+    expect(state.mcpServers.map((s) => s.id)).toEqual(["srv"]);
   });
 
   test("gemini: standard mcpServers in settings.json", () => {

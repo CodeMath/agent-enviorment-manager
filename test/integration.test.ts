@@ -67,6 +67,10 @@ describe("CLI round-trip in a temp HOME", () => {
     const profileText = fs.readFileSync(profileFile, "utf8");
     expect(profileText).not.toContain("sk-P2vyt");
     expect(profileText).toContain("schemaVersion: aem.dev/v0");
+    // machine-specific absolute paths are variable-ized, including paths
+    // embedded inside larger values (SERVICES_JSON in the codex fixture)
+    expect(profileText).toContain('\"browser\":\"~/.codex/plugins/browser.mjs\"');
+    expect(profileText).not.toContain(home);
 
     // import round-trip under a new name
     aem(home, ["import", profileFile, "--name", "copy"]);
@@ -103,7 +107,11 @@ describe("CLI round-trip in a temp HOME", () => {
       args:
         - -y
         - added-server
-    env: {}`,
+    env:
+      SVC_PATHS:
+        source: inline
+        required: false
+        value: '{"svc":"~/svc-tool/main.mjs"}'`,
     );
     fs.writeFileSync(profileFile, yaml);
 
@@ -125,6 +133,8 @@ describe("CLI round-trip in a temp HOME", () => {
     const after = fs.readFileSync(codexConfig, "utf8");
     expect(after).toContain("added-by-test");
     expect(after).toContain("keep-me"); // unknown fields preserved through apply
+    // portable ~ paths in profile values are materialized on apply
+    expect(after).toContain(`${home}/svc-tool/main.mjs`);
 
     const backups = fs.readdirSync(path.join(home, ".aem", "backups"));
     expect(backups.length).toBe(1);

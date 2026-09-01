@@ -113,8 +113,15 @@ Vendor inventory cross-checked against the AI coding agent list maintained by [t
 | Factory Droid | ✅ | read-only | `~/.factory/mcp.json` |
 | Goose | ✅ (detect) | read-only | `~/.config/goose/config.yaml` |
 | Zed Agent | ✅ | read-only | `~/.config/zed/settings.json` (`context_servers`) |
+| Crush | ✅ | read-only | `~/.config/crush/crush.json` (`mcp`), project `crush.json`/`.crush.json` |
+| Cline | ✅ | read-only | VS Code globalStorage `cline_mcp_settings.json`, `.clinerules` |
+| Roo Code | ✅ | read-only | globalStorage `mcp_settings.json`, project `.roo/mcp.json` |
+| Kilo Code | ✅ | read-only | globalStorage `mcp_settings.json`, project `.kilocode/mcp.json` |
+| Grok CLI | ✅ | read-only | `~/.grok/user-settings.json` (`mcpServers`) |
 
-Read-only vendors are declared in a single declarative catalog (`src/adapters/catalog.ts`); their MCP servers are normalized into the same canonical model, so `doctor` (inline secrets, missing env, broken paths, cross-vendor duplicates) and `drift` work across all of them. Promoting a vendor to full apply support means implementing `apply`/`backupTargets` for it.
+**Detect-tier** (installation/version detection feeding `scan` and profile inventory): OpenClaw, Prime Agent, Hermes Agent, Pi, Oh My Pi, Senpi, Kimchi Coding, Kimi CLI/Code, Codebuff, Antigravity CLI, Warp, Devin CLI, Augment (Auggie), Jcode, MiMo Code, Junie, Command Code, ZCode, OpenCodeReview, CodeBuddy, WorkBuddy, DeepSeek Harness, fx, Mux, Gajae Code, LM Studio, Octofriend, Cherry Studio.
+
+Read-only vendors are declared in a single declarative catalog (`src/adapters/catalog.ts`); their MCP servers are normalized into the same canonical model, so `doctor` (inline secrets, missing env, broken paths, cross-vendor duplicates) and `drift` work across all of them. Generic binary names (`pi`, `mux`, `fx`, …) are deliberately not probed — presence directories only — to avoid false positives from unrelated tools. Promoting a vendor to full apply support means implementing `apply`/`backupTargets` for it.
 
 ## What gets managed vs observed
 
@@ -129,6 +136,7 @@ Read-only vendors are declared in a single declarative catalog (`src/adapters/ca
 - `apply` backs every target file up to `~/.aem/backups/<timestamp>/<vendor>/...` first, and records the result in `~/.aem/audit/events.jsonl`.
 - Unknown vendor fields are preserved through read → export → apply.
 - **Secrets are references, never values.** Secret-looking values (key-name heuristics + token-shape patterns) are dropped at the adapter boundary; a final export guard refuses to serialize anything secret-looking, and `import` rejects profiles that contain one.
+- **Profiles are machine-portable.** Absolute home paths are rewritten to `~` on export — including paths embedded inside larger values (e.g. JSON strings in env vars) — and expanded back to the target machine's home on diff/apply.
 - Known limitation: applying to `~/.codex/config.toml` re-serializes the TOML, so comments/formatting in that file are not preserved (values are). The pre-apply backup keeps the original.
 
 ## Local storage layout

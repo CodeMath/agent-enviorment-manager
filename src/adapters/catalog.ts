@@ -197,6 +197,111 @@ export const VENDOR_CATALOG: VendorSpec[] = [
       { id: "zed-user-mcp", path: ".config/zed/settings.json", scope: "user", key: "context_servers", style: "zed" },
     ],
   },
+  {
+    id: "crush",
+    displayName: "Crush",
+    binary: "crush",
+    presence: [".config/crush", ".local/share/crush"],
+    configFiles: [
+      { id: "crush-user-config", path: ".config/crush/crush.json", scope: "user", format: "json" },
+      { id: "crush-project-config", path: "crush.json", scope: "project", format: "json" },
+      { id: "crush-project-config-hidden", path: ".crush.json", scope: "project", format: "json" },
+    ],
+    mcp: [
+      { id: "crush-user-mcp", path: ".config/crush/crush.json", scope: "user", key: "mcp" },
+      { id: "crush-project-mcp", path: "crush.json", scope: "project", key: "mcp" },
+      { id: "crush-project-mcp-hidden", path: ".crush.json", scope: "project", key: "mcp" },
+    ],
+  },
+  {
+    id: "cline",
+    displayName: "Cline",
+    presence: [
+      ".cline",
+      "Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev",
+      ".config/Code/User/globalStorage/saoudrizwan.claude-dev",
+    ],
+    configFiles: [],
+    mcp: [
+      { id: "cline-mac-mcp", path: "Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json", scope: "user", key: "mcpServers" },
+      { id: "cline-linux-mcp", path: ".config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json", scope: "user", key: "mcpServers" },
+    ],
+    instructions: [{ id: "cline-project-rules", path: ".clinerules", scope: "project" }],
+  },
+  {
+    id: "roo-code",
+    displayName: "Roo Code",
+    presence: [
+      "Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline",
+      ".config/Code/User/globalStorage/rooveterinaryinc.roo-cline",
+    ],
+    configFiles: [
+      { id: "roo-project-rules", path: ".roo", scope: "project", format: "directory" },
+    ],
+    mcp: [
+      { id: "roo-mac-mcp", path: "Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json", scope: "user", key: "mcpServers" },
+      { id: "roo-linux-mcp", path: ".config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json", scope: "user", key: "mcpServers" },
+      { id: "roo-project-mcp", path: ".roo/mcp.json", scope: "project", key: "mcpServers" },
+    ],
+  },
+  {
+    id: "kilo",
+    displayName: "Kilo Code",
+    presence: [
+      "Library/Application Support/Code/User/globalStorage/kilocode.kilo-code",
+      ".config/Code/User/globalStorage/kilocode.kilo-code",
+      ".local/share/kilo",
+    ],
+    configFiles: [],
+    mcp: [
+      { id: "kilo-mac-mcp", path: "Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/settings/mcp_settings.json", scope: "user", key: "mcpServers" },
+      { id: "kilo-linux-mcp", path: ".config/Code/User/globalStorage/kilocode.kilo-code/settings/mcp_settings.json", scope: "user", key: "mcpServers" },
+      { id: "kilo-project-mcp", path: ".kilocode/mcp.json", scope: "project", key: "mcpServers" },
+    ],
+  },
+  {
+    id: "grok",
+    displayName: "Grok CLI",
+    presence: [".grok"],
+    configFiles: [
+      { id: "grok-user-settings", path: ".grok/user-settings.json", scope: "user", format: "json" },
+    ],
+    mcp: [
+      { id: "grok-user-mcp", path: ".grok/user-settings.json", scope: "user", key: "mcpServers" },
+    ],
+  },
+  // ---- detect-tier vendors (presence/config detection; no MCP parsing) ----
+  // Inventory cross-checked against tokscale's client list. Generic binary
+  // names (pi, mux, fx, ...) are intentionally not probed to avoid false
+  // positives from unrelated tools.
+  { id: "openclaw", displayName: "OpenClaw", binary: "openclaw", presence: [".openclaw"], configFiles: [{ id: "openclaw-user-config", path: ".openclaw/openclaw.json", scope: "user", format: "json" }] },
+  { id: "prime", displayName: "Prime Agent", presence: [".prime"], configFiles: [] },
+  { id: "hermes", displayName: "Hermes Agent", presence: [".hermes"], configFiles: [] },
+  { id: "pi", displayName: "Pi", presence: [".pi"], configFiles: [] },
+  { id: "oh-my-pi", displayName: "Oh My Pi", binary: "omp", presence: [".omp"], configFiles: [] },
+  { id: "senpi", displayName: "Senpi", binary: "senpi", presence: [".senpi"], configFiles: [] },
+  { id: "kimchi", displayName: "Kimchi Coding", binary: "kimchi", presence: [".config/kimchi"], configFiles: [] },
+  { id: "kimi", displayName: "Kimi CLI/Code", presence: [".kimi", ".kimi-code"], configFiles: [] },
+  { id: "codebuff", displayName: "Codebuff", binary: "codebuff", presence: [".config/manicode"], configFiles: [] },
+  { id: "antigravity", displayName: "Antigravity CLI", presence: [".gemini/antigravity-cli"], configFiles: [] },
+  { id: "warp", displayName: "Warp", presence: [".warp"], configFiles: [] },
+  { id: "devin", displayName: "Devin CLI", presence: [".local/share/devin"], configFiles: [] },
+  { id: "augment", displayName: "Augment (Auggie)", binary: "auggie", presence: [".augment"], configFiles: [] },
+  { id: "jcode", displayName: "Jcode", binary: "jcode", presence: [".jcode"], configFiles: [] },
+  { id: "mimo", displayName: "MiMo Code", presence: [".local/share/mimocode"], configFiles: [] },
+  { id: "junie", displayName: "Junie", presence: [".junie"], configFiles: [] },
+  { id: "command-code", displayName: "Command Code", presence: [".commandcode"], configFiles: [] },
+  { id: "zcode", displayName: "ZCode", binary: "zcode", presence: [".zcode"], configFiles: [] },
+  { id: "opencodereview", displayName: "OpenCodeReview", presence: [".opencodereview"], configFiles: [] },
+  { id: "codebuddy", displayName: "CodeBuddy", binary: "codebuddy", presence: [".codebuddy"], configFiles: [] },
+  { id: "workbuddy", displayName: "WorkBuddy", presence: [".workbuddy"], configFiles: [] },
+  { id: "deepseek-harness", displayName: "DeepSeek Harness", binary: "dsh", presence: [".dsh"], configFiles: [] },
+  { id: "fx", displayName: "fx (Vercel)", presence: [".fx"], configFiles: [] },
+  { id: "mux", displayName: "Mux", presence: [".mux"], configFiles: [] },
+  { id: "gjc", displayName: "Gajae Code", binary: "gjc", presence: [".gjc"], configFiles: [] },
+  { id: "lmstudio", displayName: "LM Studio", binary: "lms", presence: [".lmstudio"], configFiles: [] },
+  { id: "octofriend", displayName: "Octofriend", binary: "octofriend", presence: [".config/octofriend"], configFiles: [{ id: "octofriend-user-config", path: ".config/octofriend/octofriend.json5", scope: "user", format: "unknown" }] },
+  { id: "cherry-studio", displayName: "Cherry Studio", presence: ["Library/Application Support/CherryStudio", ".config/CherryStudio"], configFiles: [] },
 ];
 
 function resolvePath(ctx: AdapterContext, ref: { path: string; scope: "user" | "project" }): string {

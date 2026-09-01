@@ -8,7 +8,7 @@ import type {
   McpServer,
 } from "../model/types.js";
 import { SCHEMA_VERSION } from "../model/types.js";
-import { untildify } from "../storage/paths.js";
+import { materialize } from "../storage/paths.js";
 
 /**
  * Shared planning engine: diff, apply --dry-run and apply all consume the
@@ -139,12 +139,12 @@ function describeDesired(d: DesiredMcpServer): string[] {
 export function diffServer(d: DesiredMcpServer, c: McpServer): string[] {
   const diffs: string[] = [];
 
-  const dExe = d.command ? untildify(d.command.executable) : undefined;
+  const dExe = d.command ? materialize(d.command.executable) : undefined;
   const cExe = c.command?.executable;
   if (dExe !== cExe) {
     diffs.push(`command: ${cExe ?? "(none)"} -> ${dExe ?? "(none)"}`);
   }
-  const dArgs = d.command ? d.command.args.map(untildify).join(" ") : "";
+  const dArgs = d.command ? d.command.args.map(materialize).join(" ") : "";
   const cArgs = c.command ? c.command.args.join(" ") : "";
   if (dArgs !== cArgs) {
     diffs.push(`args: [${cArgs}] -> [${dArgs}]`);

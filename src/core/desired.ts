@@ -8,7 +8,7 @@ import type {
 } from "./model/types.js";
 import { SCHEMA_VERSION } from "./model/types.js";
 import { REDACTED } from "./redaction/redact.js";
-import { tildify } from "./storage/paths.js";
+import { portabilize, portabilizeDeep, tildify } from "./storage/paths.js";
 
 /**
  * Convert a current-state snapshot into a redacted, portable DesiredState.
@@ -48,13 +48,13 @@ export function snapshotToDesiredState(
         transport: server.transport,
         command: server.command
           ? {
-              executable: tildify(server.command.executable),
-              args: server.command.args.map((a) => tildify(a)),
+              executable: portabilize(server.command.executable),
+              args: server.command.args.map((a) => portabilize(a)),
             }
           : undefined,
         url: server.url,
         env: desiredEnv(server.env),
-        raw: server.raw,
+        raw: server.raw ? portabilizeDeep(server.raw) : undefined,
       };
       const existing = mcpEntries.find(
         (e) => e.id === server.id && signature(e) === signature(desired),
@@ -122,7 +122,13 @@ function desiredEnv(
       // secrets and env references become env-sourced requirements
       out[name] = { source: "env", required: true, value: REDACTED };
     } else {
-      out[name] = { source: "inline", required: false, value: ref.value };
+      out[name] = {
+        source: "inline",
+        required: false,
+        // machine-specific absolute paths are variable-ized, including
+        // paths embedded inside larger values (e.g. JSON strings)
+        value: ref.value === undefined ? undefined : portabilize(ref.value),
+      };
     }
   }
   return out;

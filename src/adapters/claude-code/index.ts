@@ -19,6 +19,7 @@ import type {
   AdapterContext,
   AgentRuntimeAdapter,
 } from "../types.js";
+import { materialize, materializeDeep } from "../../core/storage/paths.js";
 
 const ADAPTER_VERSION = "0.1.0";
 
@@ -269,8 +270,8 @@ function renderClaudeMcpBlock(
       ? { ...(existing as Record<string, unknown>) }
       : {};
   if (d.command) {
-    block.command = d.command.executable;
-    block.args = d.command.args;
+    block.command = materialize(d.command.executable);
+    block.args = d.command.args.map(materialize);
     delete block.url;
   } else if (d.url) {
     block.type = d.transport === "sse" ? "sse" : "http";
@@ -282,12 +283,12 @@ function renderClaudeMcpBlock(
   const env: Record<string, string> = {};
   for (const [name, ref] of Object.entries(d.env)) {
     if (ref.source === "inline" && ref.value !== undefined && ref.value !== "redacted") {
-      env[name] = ref.value;
+      env[name] = materialize(ref.value);
     }
   }
   if (Object.keys(env).length > 0) block.env = env;
   else delete block.env;
 
-  if (d.raw) Object.assign(block, d.raw);
+  if (d.raw) Object.assign(block, materializeDeep(d.raw));
   return block;
 }

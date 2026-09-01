@@ -16,7 +16,7 @@ export function ctxFor(home: string, project?: string): AdapterContext {
   };
 }
 
-export const CODEX_FIXTURE_TOML = `
+export const codexFixtureToml = (home: string) => `
 model = "gpt-5.5"
 
 [mcp_servers.github]
@@ -26,6 +26,7 @@ startup_timeout_sec = 15
 
 [mcp_servers.github.env]
 GITHUB_TOKEN = "\${GITHUB_TOKEN}"
+SERVICES_JSON = '{"browser":"${home}/.codex/plugins/browser.mjs","sky":"@oai/sky"}'
 
 [mcp_servers.leaky]
 command = "npx"
@@ -60,7 +61,7 @@ export const CLAUDE_FIXTURE_JSON = {
 /** Build a fixture home with codex + claude configs. */
 export function seedFixtureHome(home: string): void {
   fs.mkdirSync(path.join(home, ".codex", "skills", "ralph"), { recursive: true });
-  fs.writeFileSync(path.join(home, ".codex", "config.toml"), CODEX_FIXTURE_TOML);
+  fs.writeFileSync(path.join(home, ".codex", "config.toml"), codexFixtureToml(home));
   fs.writeFileSync(path.join(home, ".codex", "AGENTS.md"), "# codex agents\n");
   fs.mkdirSync(path.join(home, ".claude", "skills", "reviewer"), {
     recursive: true,
