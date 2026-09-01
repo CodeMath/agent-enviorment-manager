@@ -2,18 +2,39 @@
 
 Vendor-neutral desired-state manager for your **local AI agent environment**.
 
-`aem` detects what is installed and configured for Claude Code and Codex (runtimes, MCP servers, instructions, skills), normalizes it into a canonical model, and lets you save/restore/verify that environment as a declarative profile — with dry-run diffs, backups, and secret redaction built in.
+`aem` detects what is installed and configured across your AI coding agents (Claude Code, Codex, and 10 more — runtimes, MCP servers, instructions, skills), normalizes it into a canonical model, and lets you save/restore/verify that environment as a declarative profile — with dry-run diffs, backups, and secret redaction built in.
 
-> "내 Claude Code/Codex 환경에 무엇이 설치되어 있고, 저장된 표준과 무엇이 다른지 보여주고, 안전하게 맞춰준다."
+> **Show me what my agent environment contains, how it differs from my saved standard, and bring it back in line — safely.**
 
-Design docs live in [`_docs/`](_docs/) (philosophy & policy, roadmap, MVP functional spec).
+## Why aem
+
+AI agents are becoming the default execution unit of development work — and an agent's behavior depends as much on its *environment* as on its prompt. Yet that environment is scattered and invisible:
+
+- **Fragmented state.** MCP servers, instructions (`AGENTS.md`, `CLAUDE.md`), skills, permissions, and env vars live in a different file format and location for every vendor (`~/.codex/config.toml`, `~/.claude.json`, `~/.gemini/settings.json`, …). Nobody can answer "what is my agent allowed to do right now?" in one place.
+- **No reproducibility.** Two developers on the same repo get different agent behavior because their local MCP servers, instructions, and versions differ. That's not just a productivity gap — it's a quality, security, and audit problem: an inline API key here, a stale skill there, a `prod-db-write` MCP only one person has.
+- **The dotfiles trap.** Today this is managed like 2010-era shell config: manual edits, tribal knowledge, and "copy my settings" onboarding docs. Config changes leave no history, no diff, no rollback.
+- **The governance gap.** Central agent registries and security policies can define what's *approved*, but nothing translates that into each developer's actual vendor-native config files — or verifies the local reality matches.
+
+`aem`'s answer is to move agent environments from *dotfiles + memory* to **declarative desired state**, the same shift infrastructure made with IaC:
+
+1. **Detect** current state and **normalize** it into one canonical model (vendor-neutral).
+2. **Declare** the state you want as a redacted, portable profile.
+3. **Plan** changes as a reviewable diff, **verify** risks with `doctor`, **apply** with backups, and **detect drift** over time.
+
+Three principles keep this trustworthy:
+
+- **Vendor-native is respected.** `aem` doesn't replace your agents or wrap their runtimes; adapters translate the canonical model to and from each vendor's own config files, preserving unknown fields.
+- **Local-first.** No account, no server, no telemetry. Everything works offline and stays in `~/.aem/`; only the opt-in `aem update` touches the network.
+- **Secrets are references, never values.** Tokens and keys are redacted at the adapter boundary and can never enter profiles, output, or audit logs.
+
+Full rationale, scope boundaries, and the Free → Team → Enterprise trajectory live in [`_docs/`](_docs/) (philosophy & policy, roadmap, MVP functional spec).
 
 ## Install (local production)
 
 From a release (recommended — prebuilt tarball, no local build needed):
 
 ```bash
-npm install -g https://github.com/CodeMath/agent-enviorment-manager/releases/download/v0.1.0/agent-environment-manager-0.1.0.tgz
+npm install -g https://github.com/CodeMath/agent-enviorment-manager/releases/download/v0.2.0/agent-environment-manager-0.2.0.tgz
 aem --version
 ```
 
@@ -145,12 +166,13 @@ src/
     doctor/            # cross-vendor findings
     drift/             # profile vs current comparison
   adapters/
-    codex/             # ~/.codex/config.toml (TOML)
-    claude-code/       # ~/.claude.json, .mcp.json (JSON)
+    codex/             # ~/.codex/config.toml (TOML) — full apply support
+    claude-code/       # ~/.claude.json, .mcp.json (JSON) — full apply support
+    catalog.ts         # declarative read-only vendor catalog (10 vendors)
   output/              # human-readable text rendering
 ```
 
-Adapters implement `read / doctor / backupTargets / apply`; one adapter failing never blocks the others. Adding a vendor (Cursor, Gemini CLI, …) means one new adapter module — the canonical model and planner stay untouched.
+Adapters implement `read / doctor / backupTargets / apply`; one adapter failing never blocks the others. Adding a read-only vendor is one `VendorSpec` entry in the catalog — the canonical model and planner stay untouched.
 
 ## Roadmap
 
