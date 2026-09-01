@@ -240,7 +240,7 @@ export const claudeCodeAdapter: AgentRuntimeAdapter = {
             // Claude Code has no disabled flag; disabled means absent.
             delete table[id];
           } else {
-            table[id] = renderClaudeMcpBlock(d, table[id]);
+            table[id] = renderClaudeMcpBlock(d, table[id], ctx.project);
           }
         } else {
           continue; // noop
@@ -264,14 +264,15 @@ export const claudeCodeAdapter: AgentRuntimeAdapter = {
 function renderClaudeMcpBlock(
   d: DesiredMcpServer,
   existing: unknown,
+  projectDir?: string,
 ): Record<string, unknown> {
   const block: Record<string, unknown> =
     existing !== null && typeof existing === "object"
       ? { ...(existing as Record<string, unknown>) }
       : {};
   if (d.command) {
-    block.command = materialize(d.command.executable);
-    block.args = d.command.args.map(materialize);
+    block.command = materialize(d.command.executable, projectDir);
+    block.args = d.command.args.map((a) => materialize(a, projectDir));
     delete block.url;
   } else if (d.url) {
     block.type = d.transport === "sse" ? "sse" : "http";
@@ -283,12 +284,12 @@ function renderClaudeMcpBlock(
   const env: Record<string, string> = {};
   for (const [name, ref] of Object.entries(d.env)) {
     if (ref.source === "inline" && ref.value !== undefined && ref.value !== "redacted") {
-      env[name] = materialize(ref.value);
+      env[name] = materialize(ref.value, projectDir);
     }
   }
   if (Object.keys(env).length > 0) block.env = env;
   else delete block.env;
 
-  if (d.raw) Object.assign(block, materializeDeep(d.raw));
+  if (d.raw) Object.assign(block, materializeDeep(d.raw, projectDir));
   return block;
 }

@@ -1,25 +1,21 @@
 import { buildChangePlan } from "../../core/planner/plan.js";
 import { appendAudit } from "../../core/storage/audit.js";
 import { backupFiles } from "../../core/storage/backup.js";
-import { loadProfile } from "../../core/storage/store.js";
 import { tildify } from "../../core/storage/paths.js";
 import { renderPlan, bold, dim, green, red } from "../../output/text.js";
 import { confirm, failWith, scanNow, type ScanSetup } from "../common.js";
-import { resolveProfileName } from "./profile.js";
+import { resolveDesired } from "./profile.js";
 import type { ChangePlan, DesiredState } from "../../core/model/types.js";
 
 function planFor(
   profileFlag: string | undefined,
   vendor: string,
 ): { setup: ScanSetup; desired: DesiredState; plan: ChangePlan; name: string } {
-  const name = resolveProfileName(profileFlag);
-  let desired: DesiredState;
-  try {
-    desired = loadProfile(name);
-  } catch (err) {
+  const { name, desired, source } = resolveDesired(profileFlag);
+  if (desired.metadata.scope === "project") {
     failWith(
-      err instanceof Error ? err.message : String(err),
-      "Run `aem profile list` to see available profiles.",
+      `Profile "${name}" is project-scoped${source === "project" ? " (.aem/desired-state.yaml)" : ""}; project profiles are check-only in the MVP.`,
+      "Use `aem drift` / `aem doctor` for project baselines. Apply targets user-level config only.",
     );
   }
   const setup = scanNow(vendor);

@@ -154,6 +154,12 @@ export interface DesiredState {
     name: string;
     description?: string;
     createdAt: string;
+    /**
+     * user (default): full user-level environment profile (~/.aem/profiles).
+     * project: repo-committed profile (<repo>/.aem/desired-state.yaml)
+     * containing only project-scope resources; check-only in the MVP.
+     */
+    scope?: "user" | "project";
     /** runtime versions observed at export time; used by drift detection */
     observedRuntimeVersions?: Record<string, string>;
   };

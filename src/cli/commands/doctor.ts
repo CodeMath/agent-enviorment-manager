@@ -1,7 +1,14 @@
+import fs from "node:fs";
+import path from "node:path";
+import YAML from "yaml";
 import { runDoctor } from "../../core/doctor/doctor.js";
 import { detectDrift } from "../../core/drift/drift.js";
-import type { Finding } from "../../core/model/types.js";
-import { listProfiles, loadProfile } from "../../core/storage/store.js";
+import type { DesiredState, Finding } from "../../core/model/types.js";
+import {
+  listProfiles,
+  loadProfile,
+  validateDesiredState,
+} from "../../core/storage/store.js";
 import { SCHEMA_VERSION } from "../../core/model/types.js";
 import { renderFindings } from "../../output/text.js";
 import { failWith, scanNow } from "../common.js";
@@ -31,25 +38,53 @@ export function runDoctorCommand(opts: {
     }
   }
 
+  // drift check: explicit --profile, or the project baseline when present
+  const projectFile = path.join(ctx.project, ".aem", "desired-state.yaml");
+  let driftTarget: { name: string; desired: DesiredState } | undefined;
   if (opts.profile) {
     try {
-      const desired = loadProfile(opts.profile);
-      const drift = detectDrift(desired, snapshot, opts.profile);
-      if (drift.items.length > 0) {
-        findings.push({
-          id: `drift-${opts.profile}`,
-          severity: "warning",
-          category: "drift_detected",
-          title: `Drift from profile "${opts.profile}"`,
-          message: `${drift.items.length} difference(s) between the current environment and the profile.`,
-          suggestedAction: `Run \`aem drift --profile ${opts.profile}\` for details.`,
-        });
-      }
+      driftTarget = { name: opts.profile, desired: loadProfile(opts.profile) };
     } catch (err) {
       failWith(
         err instanceof Error ? err.message : String(err),
         "Run `aem profile list` to see available profiles.",
       );
+    }
+  } else if (fs.existsSync(projectFile)) {
+    try {
+      const desired = validateDesiredState(
+        YAML.parse(fs.readFileSync(projectFile, "utf8")),
+      );
+      driftTarget = { name: desired.metadata.name, desired };
+    } catch (err) {
+      findings.push({
+        id: "project-profile-invalid",
+        severity: "warning",
+        category: "stale_profile",
+        title: "Invalid project profile",
+        message: `${projectFile}: ${err instanceof Error ? err.message : String(err)}`,
+        suggestedAction: "Fix the file or re-generate it with `aem init --force`.",
+      });
+    }
+  }
+  if (driftTarget) {
+    const drift = detectDrift(
+      driftTarget.desired,
+      snapshot,
+      driftTarget.name,
+      ctx.project,
+    );
+    if (drift.items.length > 0) {
+      findings.push({
+        id: `drift-${driftTarget.name}`,
+        severity: "warning",
+        category: "drift_detected",
+        title: `Drift from profile "${driftTarget.name}"`,
+        message: `${drift.items.length} difference(s) between the current environment and the profile.`,
+        suggestedAction: opts.profile
+          ? `Run \`aem drift --profile ${driftTarget.name}\` for details.`
+          : "Run `aem drift` for details.",
+      });
     }
   }
 

@@ -214,7 +214,7 @@ export const codexAdapter: AgentRuntimeAdapter = {
           delete table[id];
         } else if (change.action === "add" || change.action === "update") {
           if (!d) throw new Error(`no desired entry for ${id}`);
-          table[id] = renderCodexMcpBlock(d, table[id]);
+          table[id] = renderCodexMcpBlock(d, table[id], ctx.project);
         } else {
           continue; // noop
         }
@@ -239,14 +239,15 @@ export const codexAdapter: AgentRuntimeAdapter = {
 function renderCodexMcpBlock(
   d: DesiredMcpServer,
   existing: unknown,
+  projectDir?: string,
 ): Record<string, unknown> {
   const block: Record<string, unknown> =
     existing !== null && typeof existing === "object"
       ? { ...(existing as Record<string, unknown>) }
       : {};
   if (d.command) {
-    block.command = materialize(d.command.executable);
-    block.args = d.command.args.map(materialize);
+    block.command = materialize(d.command.executable, projectDir);
+    block.args = d.command.args.map((a) => materialize(a, projectDir));
     delete block.url;
   } else if (d.url) {
     block.url = d.url;
@@ -258,13 +259,13 @@ function renderCodexMcpBlock(
   const env: Record<string, string> = {};
   for (const [name, ref] of Object.entries(d.env)) {
     if (ref.source === "inline" && ref.value !== undefined && ref.value !== "redacted") {
-      env[name] = materialize(ref.value);
+      env[name] = materialize(ref.value, projectDir);
     }
     // env-sourced / secret vars are never written into vendor config
   }
   if (Object.keys(env).length > 0) block.env = env;
   else delete block.env;
 
-  if (d.raw) Object.assign(block, materializeDeep(d.raw));
+  if (d.raw) Object.assign(block, materializeDeep(d.raw, projectDir));
   return block;
 }

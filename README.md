@@ -82,6 +82,7 @@ aem apply --profile personal-default
 | Command | Writes vendor config? | Purpose |
 | --- | --- | --- |
 | `aem scan [--json] [--vendor codex\|claude\|all] [--project <path>]` | no | Detect runtimes, config sources, MCP servers, instructions, skills |
+| `aem init [--force]` | no (writes `<cwd>/.aem/`) | Generate a committable project-scope baseline (`.aem/desired-state.yaml`) |
 | `aem doctor [--json] [--vendor] [--profile <name>]` | no | Findings: `missing_env`, `secret_inline`, `broken_path`, `duplicate_mcp`, `dangerous_command`, `unknown_config`, `stale_profile`, `drift_detected`, `unsupported_version` |
 | `aem export --profile <name> [--out <path>] [--force]` | no | Current state → redacted DesiredState YAML |
 | `aem import <file> [--name <n>] [--force]` | no | Validate + register a profile (rejects inline secrets, wrong schema) |
@@ -122,6 +123,14 @@ Vendor inventory cross-checked against the AI coding agent list maintained by [t
 **Detect-tier** (installation/version detection feeding `scan` and profile inventory): OpenClaw, Prime Agent, Hermes Agent, Pi, Oh My Pi, Senpi, Kimchi Coding, Kimi CLI/Code, Codebuff, Antigravity CLI, Warp, Devin CLI, Augment (Auggie), Jcode, MiMo Code, Junie, Command Code, ZCode, OpenCodeReview, CodeBuddy, WorkBuddy, DeepSeek Harness, fx, Mux, Gajae Code, LM Studio, Octofriend, Cherry Studio.
 
 Read-only vendors are declared in a single declarative catalog (`src/adapters/catalog.ts`); their MCP servers are normalized into the same canonical model, so `doctor` (inline secrets, missing env, broken paths, cross-vendor duplicates) and `drift` work across all of them. Generic binary names (`pi`, `mux`, `fx`, …) are deliberately not probed — presence directories only — to avoid false positives from unrelated tools. Promoting a vendor to full apply support means implementing `apply`/`backupTargets` for it.
+
+## Profiles: user scope vs project scope
+
+- **User profiles** (`~/.aem/profiles/*.yaml`, via `aem export`) capture the full environment — user-level and project-level resources — and drive `diff`/`apply`/`drift`.
+- **Project profiles** (`<repo>/.aem/desired-state.yaml`, via `aem init`) capture **only project-scope resources**: project MCP config (e.g. `.mcp.json`, `.cursor/mcp.json`), project instructions (`AGENTS.md`, `CLAUDE.md`), and project skills. Personal user-level servers never leak into the repo-committed file.
+- Profile resolution order for `drift`/`doctor` (and `diff`/`apply`): explicit `--profile` → `<cwd>/.aem/desired-state.yaml` when present → the active profile.
+- Project profiles are **check-only** in the MVP (per spec: project dir support is read-only): `drift` and `doctor` validate them — scope-aware, so user-level changes never flag a project baseline — while `diff`/`apply` refuse them with a clear error. This is the on-ramp to the Phase 3 team baseline (`.aem/team.yaml`).
+- Portability: home paths become `~`, project paths become `${PROJECT_ROOT}` (embedded occurrences included), project instruction/skill paths are stored `./`-relative. Symlink spellings (macOS `/var` vs `/private/var`, `/tmp` vs `/private/tmp`) are treated as identical.
 
 ## What gets managed vs observed
 

@@ -6,18 +6,25 @@ import type {
 } from "../model/types.js";
 import { SCHEMA_VERSION } from "../model/types.js";
 import { diffServer } from "../planner/plan.js";
+import { isUnderDir } from "../storage/paths.js";
 
 /**
  * Drift = differences between a saved profile (desired state) and the
  * current environment, including things apply would never touch:
  * extra MCP servers, instruction/skill add/remove, runtime version changes.
+ *
+ * Project-scoped profiles compare only project-scope resources: user-level
+ * servers/instructions/skills are ignored so a repo baseline does not flag
+ * every personal MCP server as drift.
  */
 export function detectDrift(
   desired: DesiredState,
   snapshot: EnvironmentSnapshot,
   profileName: string,
+  projectDir?: string,
 ): DriftReport {
   const items: DriftItem[] = [];
+  const projectOnly = desired.metadata.scope === "project";
 
   for (const runtime of snapshot.runtimes) {
     if (!runtime.installed) continue;
@@ -25,7 +32,10 @@ export function detectDrift(
       d.allowedRuntimes.includes(runtime.id),
     );
     const desiredById = new Map(desiredForRuntime.map((d) => [d.id, d]));
-    const currentById = new Map(runtime.mcpServers.map((s) => [s.id, s]));
+    const currentServers = runtime.mcpServers.filter(
+      (s) => !projectOnly || (projectDir && isUnderDir(s.sourcePath, projectDir)),
+    );
+    const currentById = new Map(currentServers.map((s) => [s.id, s]));
 
     for (const [id, current] of currentById) {
       const d = desiredById.get(id);
@@ -39,7 +49,7 @@ export function detectDrift(
         });
         continue;
       }
-      const diffs = diffServer(d, current);
+      const diffs = diffServer(d, current, projectDir);
       if (diffs.length > 0) {
         items.push({
           runtime: runtime.id,
@@ -66,7 +76,10 @@ export function detectDrift(
     const desiredInstr = desired.instructions.filter((i) =>
       i.applyTo.includes(runtime.id),
     );
-    const currentInstrIds = new Set(runtime.instructionPacks.map((p) => p.id));
+    const currentInstrPacks = runtime.instructionPacks.filter(
+      (p) => !projectOnly || p.type === "project",
+    );
+    const currentInstrIds = new Set(currentInstrPacks.map((p) => p.id));
     for (const i of desiredInstr) {
       if (!currentInstrIds.has(i.id)) {
         items.push({
@@ -79,7 +92,7 @@ export function detectDrift(
       }
     }
     const desiredInstrIds = new Set(desiredInstr.map((i) => i.id));
-    for (const p of runtime.instructionPacks) {
+    for (const p of currentInstrPacks) {
       if (!desiredInstrIds.has(p.id)) {
         items.push({
           runtime: runtime.id,
@@ -96,7 +109,10 @@ export function detectDrift(
       s.applyTo.includes(runtime.id),
     );
     const desiredSkillIds = new Set(desiredSkills.map((s) => s.id));
-    const currentSkillIds = new Set(runtime.skillPacks.map((s) => s.id));
+    const currentSkillPacks = runtime.skillPacks.filter(
+      (s) => !projectOnly || s.type === "project",
+    );
+    const currentSkillIds = new Set(currentSkillPacks.map((s) => s.id));
     for (const s of desiredSkills) {
       if (!currentSkillIds.has(s.id)) {
         items.push({
@@ -108,7 +124,7 @@ export function detectDrift(
         });
       }
     }
-    for (const s of runtime.skillPacks) {
+    for (const s of currentSkillPacks) {
       if (!desiredSkillIds.has(s.id)) {
         items.push({
           runtime: runtime.id,

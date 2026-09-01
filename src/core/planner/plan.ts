@@ -8,7 +8,7 @@ import type {
   McpServer,
 } from "../model/types.js";
 import { SCHEMA_VERSION } from "../model/types.js";
-import { materialize } from "../storage/paths.js";
+import { materialize, portabilize } from "../storage/paths.js";
 
 /**
  * Shared planning engine: diff, apply --dry-run and apply all consume the
@@ -83,7 +83,7 @@ export function buildChangePlan(
         continue;
       }
 
-      const diffs = diffServer(d, current);
+      const diffs = diffServer(d, current, ctx.project);
       if (diffs.length > 0) {
         changes.push({
           id: nextId(),
@@ -136,18 +136,31 @@ function describeDesired(d: DesiredMcpServer): string[] {
 }
 
 /** Compare a desired MCP server against current state; return human diffs. */
-export function diffServer(d: DesiredMcpServer, c: McpServer): string[] {
+export function diffServer(
+  d: DesiredMcpServer,
+  c: McpServer,
+  projectDir?: string,
+): string[] {
   const diffs: string[] = [];
 
-  const dExe = d.command ? materialize(d.command.executable) : undefined;
+  // Compare in portable space so equivalent path spellings
+  // (~, ${PROJECT_ROOT}, symlink aliases like /var vs /private/var)
+  // never register as differences.
+  const norm = (v: string) => portabilize(materialize(v, projectDir), projectDir);
+
+  const dExe = d.command ? materialize(d.command.executable, projectDir) : undefined;
   const cExe = c.command?.executable;
-  if (dExe !== cExe) {
+  if ((dExe === undefined) !== (cExe === undefined) || (dExe !== undefined && cExe !== undefined && norm(dExe) !== norm(cExe))) {
     diffs.push(`command: ${cExe ?? "(none)"} -> ${dExe ?? "(none)"}`);
   }
-  const dArgs = d.command ? d.command.args.map(materialize).join(" ") : "";
-  const cArgs = c.command ? c.command.args.join(" ") : "";
+  const dArgs = d.command
+    ? d.command.args.map((a) => norm(materialize(a, projectDir))).join(" ")
+    : "";
+  const cArgs = c.command ? c.command.args.map(norm).join(" ") : "";
   if (dArgs !== cArgs) {
-    diffs.push(`args: [${cArgs}] -> [${dArgs}]`);
+    diffs.push(
+      `args: [${c.command?.args.join(" ") ?? ""}] -> [${d.command?.args.map((a) => materialize(a, projectDir)).join(" ") ?? ""}]`,
+    );
   }
   if ((d.url ?? "") !== (c.url ?? "")) {
     diffs.push(`url: ${c.url ?? "(none)"} -> ${d.url ?? "(none)"}`);

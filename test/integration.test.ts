@@ -171,6 +171,67 @@ describe("CLI round-trip in a temp HOME", () => {
     );
   }, 60000);
 
+  test("project profile: init -> auto-resolution -> scope-aware drift -> apply rejected", () => {
+    const home = makeTempHome();
+    seedFixtureHome(home);
+    const project = path.join(home, "project");
+    // project-scope resources: claude .mcp.json + codex AGENTS.md
+    fs.writeFileSync(
+      path.join(project, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: { "proj-srv": { command: "node", args: [`${project}/tools/srv.js`] } },
+      }),
+    );
+    fs.writeFileSync(path.join(project, "AGENTS.md"), "# project agents\n");
+
+    // init creates a committable project baseline
+    const initOut = aem(home, ["init"]);
+    expect(initOut).toContain("desired-state.yaml");
+    const baselineFile = path.join(project, ".aem", "desired-state.yaml");
+    const baseline = fs.readFileSync(baselineFile, "utf8");
+    expect(baseline).toContain("scope: project");
+    expect(baseline).toContain("proj-srv");
+    expect(baseline).toContain("./AGENTS.md"); // project-relative instruction path
+    expect(baseline).toContain("${PROJECT_ROOT}/tools/srv.js"); // variable-ized arg
+    expect(baseline).not.toContain(home); // no machine-specific paths
+    // user-level servers (github, leaky, playwright...) stay out of the repo baseline
+    expect(baseline).not.toContain("github");
+    expect(baseline).not.toContain("playwright");
+
+    // drift auto-picks the project profile without --profile and is clean
+    const driftOut = aem(home, ["drift"]);
+    expect(driftOut).toContain("project");
+    expect(driftOut).toContain("No drift");
+
+    // user-level MCP changes do NOT drift a project-scoped baseline
+    const claudeState = JSON.parse(
+      fs.readFileSync(path.join(home, ".claude.json"), "utf8"),
+    );
+    claudeState.mcpServers["user-only-new"] = { command: "npx", args: ["-y", "x"] };
+    fs.writeFileSync(
+      path.join(home, ".claude.json"),
+      JSON.stringify(claudeState, null, 2),
+    );
+    expect(aem(home, ["drift"])).toContain("No drift");
+
+    // project-scope change DOES drift
+    const mcp = JSON.parse(fs.readFileSync(path.join(project, ".mcp.json"), "utf8"));
+    mcp.mcpServers["proj-extra"] = { command: "node", args: ["x.js"] };
+    fs.writeFileSync(path.join(project, ".mcp.json"), JSON.stringify(mcp));
+    const drift2 = aem(home, ["drift"], { expectFail: true });
+    expect(drift2).toContain("proj-extra");
+
+    // doctor auto-checks the project baseline
+    const doctorOut = aem(home, ["doctor"], { expectFail: true });
+    expect(doctorOut).toContain("drift_detected");
+
+    // apply/diff refuse project-scoped profiles (check-only in MVP)
+    const applyOut = aem(home, ["apply", "--yes"], { expectFail: true });
+    expect(applyOut).toContain("check-only");
+    const diffOut = aem(home, ["diff"], { expectFail: true });
+    expect(diffOut).toContain("check-only");
+  }, 60000);
+
   test("import rejects a profile containing an inline secret", () => {
     const home = makeTempHome();
     seedFixtureHome(home);

@@ -19,12 +19,11 @@ export function runExport(opts: {
   vendor: string;
   force?: boolean;
 }): void {
-  const { snapshot } = scanNow(opts.vendor);
-  const desired = snapshotToDesiredState(
-    snapshot,
-    opts.profile,
-    `Exported from local environment scan`,
-  );
+  const { ctx, snapshot } = scanNow(opts.vendor);
+  const desired = snapshotToDesiredState(snapshot, opts.profile, {
+    description: "Exported from local environment scan",
+    projectDir: ctx.project,
+  });
 
   try {
     if (opts.out) {

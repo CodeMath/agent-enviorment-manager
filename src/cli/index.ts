@@ -10,6 +10,7 @@ import {
   runProfileShow,
   runProfileUse,
 } from "./commands/profile.js";
+import { runInit } from "./commands/init.js";
 import { runScan } from "./commands/scan.js";
 import { runUpdate } from "./commands/update.js";
 import { currentVersion } from "../core/version.js";
@@ -55,6 +56,15 @@ program
   .option("--name <name>", "import under a different profile name")
   .option("--force", "overwrite an existing profile")
   .action((file, opts) => runImport({ file, ...opts }));
+
+program
+  .command("init")
+  .description(
+    "Create <cwd>/.aem/desired-state.yaml — a committable project-scope baseline",
+  )
+  .option("--vendor <vendor>", "vendor id (codex, claude, gemini, cursor, ...) or all", "all")
+  .option("--force", "overwrite an existing project profile")
+  .action((opts) => runInit(opts));
 
 const profile = program
   .command("profile")
