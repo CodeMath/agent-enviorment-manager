@@ -1,0 +1,31 @@
+{
+  "name": "agent-environment-manager",
+  "version": "0.1.0",
+  "description": "aem - vendor-neutral desired state manager for local AI agent environments (Claude Code, Codex)",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "aem": "dist/cli/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test",
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "smol-toml": "^1.3.1",
+    "yaml": "^2.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  }
+}

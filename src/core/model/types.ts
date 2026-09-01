@@ -1,0 +1,213 @@
+/**
+ * Canonical data model v0 (aem.dev/v0)
+ *
+ * Every vendor config is normalized into these types. Vendor adapters
+ * translate between vendor-native files and this model. See
+ * _docs/03-mvp-functional-spec.md section 6.
+ */
+
+export const SCHEMA_VERSION = "aem.dev/v0";
+
+export type Severity = "info" | "warning" | "error" | "critical";
+
+export type FindingCategory =
+  | "missing_env"
+  | "secret_inline"
+  | "broken_path"
+  | "duplicate_mcp"
+  | "dangerous_command"
+  | "unknown_config"
+  | "stale_profile"
+  | "drift_detected"
+  | "unsupported_version";
+
+export interface Finding {
+  id: string;
+  severity: Severity;
+  category: FindingCategory;
+  title: string;
+  message: string;
+  runtime?: string;
+  resourceRef?: string;
+  suggestedAction?: string;
+}
+
+/** Secrets are never stored by value; only their reference/shape is kept. */
+export interface EnvVarRef {
+  /** where the value comes from */
+  source: "env" | "inline" | "unknown";
+  /** whether a secret-looking value was present (value itself is dropped) */
+  secret: boolean;
+  /** for source=env: whether the variable exists in the current shell env */
+  present?: boolean;
+  /** only kept for non-secret inline values */
+  value?: string;
+}
+
+export interface ConfigSource {
+  id: string;
+  scope: "user" | "project";
+  path: string;
+  format: "toml" | "json" | "markdown" | "directory" | "unknown";
+  exists: boolean;
+  readable: boolean;
+}
+
+export interface McpCommand {
+  executable: string;
+  args: string[];
+}
+
+export interface McpServer {
+  id: string;
+  enabled: boolean;
+  transport: "stdio" | "http" | "sse" | "unknown";
+  command?: McpCommand;
+  url?: string;
+  env: Record<string, EnvVarRef>;
+  /** unknown vendor fields, preserved (secret-redacted) */
+  raw?: Record<string, unknown>;
+  /** vendor config file this server was read from */
+  sourcePath: string;
+}
+
+export interface InstructionPack {
+  id: string;
+  type: "user" | "project";
+  path: string;
+  exists: boolean;
+  sha256?: string;
+  sizeBytes?: number;
+}
+
+export interface SkillPack {
+  id: string;
+  type: "user" | "project";
+  path: string;
+}
+
+export interface RuntimeState {
+  id: string;
+  name: string;
+  installed: boolean;
+  version?: string;
+  adapterVersion: string;
+  configSources: ConfigSource[];
+  mcpServers: McpServer[];
+  instructionPacks: InstructionPack[];
+  skillPacks: SkillPack[];
+  /** adapter-level parse warnings that should surface in scan output */
+  warnings: string[];
+}
+
+export interface EnvironmentSnapshot {
+  schemaVersion: string;
+  kind: "EnvironmentSnapshot";
+  generatedAt: string;
+  host: {
+    os: string;
+    arch: string;
+    hostnameHash: string;
+  };
+  runtimes: RuntimeState[];
+  findings: Finding[];
+}
+
+/* ------------------------- Desired state ------------------------- */
+
+export interface DesiredEnvVar {
+  source: "env" | "inline";
+  required: boolean;
+  /** always "redacted" for secrets; literal only for non-secret values */
+  value?: string;
+}
+
+export interface DesiredMcpServer {
+  id: string;
+  enabled: boolean;
+  allowedRuntimes: string[];
+  transport: "stdio" | "http" | "sse" | "unknown";
+  command?: McpCommand;
+  url?: string;
+  env: Record<string, DesiredEnvVar>;
+  raw?: Record<string, unknown>;
+}
+
+export interface DesiredInstruction {
+  id: string;
+  type: "user" | "project";
+  path: string;
+  applyTo: string[];
+}
+
+export interface DesiredSkill {
+  id: string;
+  type: "user" | "project";
+  path: string;
+  applyTo: string[];
+}
+
+export interface DesiredState {
+  schemaVersion: string;
+  kind: "DesiredState";
+  metadata: {
+    name: string;
+    description?: string;
+    createdAt: string;
+    /** runtime versions observed at export time; used by drift detection */
+    observedRuntimeVersions?: Record<string, string>;
+  };
+  targets: {
+    runtimes: { id: string; enabled: boolean }[];
+  };
+  mcpServers: DesiredMcpServer[];
+  instructions: DesiredInstruction[];
+  skills: DesiredSkill[];
+  policies: {
+    secretHandling: "forbid-inline";
+    unknownFields: "preserve";
+  };
+}
+
+/* ------------------------- Change plan ------------------------- */
+
+export type ChangeAction = "add" | "update" | "remove" | "noop";
+
+export interface Change {
+  id: string;
+  runtime: string;
+  action: ChangeAction;
+  /** canonical resource, e.g. mcp.github */
+  resourceRef: string;
+  targetPath: string;
+  summary: string;
+  risk: "low" | "medium" | "high";
+  backupRequired: boolean;
+  detail?: string[];
+}
+
+export interface ChangePlan {
+  schemaVersion: string;
+  kind: "ChangePlan";
+  profile: string;
+  generatedAt: string;
+  changes: Change[];
+}
+
+/* ------------------------- Drift ------------------------- */
+
+export interface DriftItem {
+  runtime: string;
+  kind: "mcp" | "instruction" | "skill" | "runtime-version";
+  change: "added" | "removed" | "changed";
+  resourceRef: string;
+  detail: string;
+}
+
+export interface DriftReport {
+  schemaVersion: string;
+  kind: "DriftReport";
+  profile: string;
+  generatedAt: string;
+  items: DriftItem[];
+}
