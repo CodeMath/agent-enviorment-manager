@@ -13,6 +13,7 @@ import {
 import { runInit } from "./commands/init.js";
 import { runScan } from "./commands/scan.js";
 import { runUpdate } from "./commands/update.js";
+import { runWeb } from "./commands/web.js";
 import { currentVersion } from "../core/version.js";
 
 const program = new Command();
@@ -107,6 +108,13 @@ program
   .option("--vendor <vendor>", "vendor id (codex, claude, gemini, cursor, ...) or all", "all")
   .option("--json", "machine-readable JSON output")
   .action((opts) => runDrift(opts));
+
+program
+  .command("web")
+  .description("Serve a read-only local dashboard (vendors, MCP, skills, findings, drift)")
+  .option("--port <port>", "port to listen on (127.0.0.1 only)", "4310")
+  .option("--no-open", "do not open the browser automatically")
+  .action((opts) => runWeb(opts));
 
 program
   .command("update")

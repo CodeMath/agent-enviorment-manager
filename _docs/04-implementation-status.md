@@ -14,6 +14,7 @@
 | v0.2.0 | 2026-09-02 | 벤더 카탈로그 10종 (read-only), 버전 캐시, 동일 id MCP per-runtime 병합 수정 |
 | v0.3.0 | 2026-09-02 | 이식 가능한 profile (`~` 임베디드 경로 포함), tokscale 전체 벤더 커버리지 (43종) |
 | v0.4.0 | 2026-09-02 | 프로젝트 스코프 profile: `aem init`, scope-aware drift/doctor, `${PROJECT_ROOT}` 변수화 |
+| v0.5.0 | 2026-09-03 | `aem web`: read-only 로컬 대시보드 (임베디드 단일 파일 UI, 127.0.0.1 전용) |
 
 배포: GitHub Releases에 prebuilt npm tarball 에셋 첨부. 설치/업데이트는 `npm install -g <tarball URL>` 또는 `aem update`.
 
@@ -46,6 +47,7 @@ canonical model v0(`aem.dev/v0`), adapter interface, 로컬 저장 구조, redac
 | `aem status` / `aem drift`(snapshot 대비) / `aem history` | 미구현 |
 | profile 템플릿 / shell completion / Homebrew | 미구현 |
 | GitHub Actions read-only check | 미구현 (`--json` + exit code 체계는 준비됨) |
+| 로컬 대시보드 (`aem web`) | 완료 (v0.5.0, 계획 외 — 결정 D9) |
 
 ### Phase 3~5: 미착수
 
@@ -61,6 +63,7 @@ Team baseline(`.aem/team.yaml`)이 다음 단계. 프로젝트 profile(check-onl
 - **D6. 동일 id MCP의 벤더별 변형 유지.** 정의가 동일할 때만 allowedRuntimes로 병합, 다르면 per-runtime 엔트리 유지 — drift false positive 제거 (v0.2.0에서 실사용 중 발견·수정).
 - **D7. 버전 캐시.** `~/.aem/adapters/cache.json`(바이너리 경로+mtime 키). 43종 벤더에서도 warm scan <0.1s. 스펙의 storage layout에 예정돼 있던 파일을 용도 확정.
 - **D8. apply 시 미관리 서버 보존.** profile에 없는 로컬 서버는 삭제하지 않고 drift로만 보고 — 파괴적 동작 최소화.
+- **D9. 로컬 대시보드는 read-only 뷰어로 허용.** 로드맵의 "웹 대시보드 느게"는 중앙/호스팅 대시보드에 대한 유보로 해석. `aem web`은 127.0.0.1 바인딩, GET 전용, 쓰기 endpoint 없음(변경은 확인·백업·audit이 있는 CLI 전용), 외부 리소스  0(오프라인 동작) 조건으로 local-first 원칙 유지.
 
 ## 4. 알려진 한계
 
@@ -78,7 +81,8 @@ Team baseline(`.aem/team.yaml`)이 다음 단계. 프로젝트 profile(check-onl
 
 ## 6. 다음 작업 후보 (우선순위 순)
 
-1. `aem status` / `aem history` (Phase 2 잔여)
+1. `aem status`(터미널 조종석) / `aem baseline update`(drift 수용) / `.aem/ignore.yaml`(finding 억제) — 관리 루프 닫기
+1. `aem history` (Phase 2 잔여)
 2. GitHub Actions read-only check 예제 (`aem drift --json` + exit code 활용)
 3. gemini 등 표준 `mcpServers` 벤더의 apply 승격 (가장 저비용 확장)
 4. Homebrew tap / shell completion

@@ -100,11 +100,20 @@ aem doctor               # includes drift_detected findings for the baseline
 | `aem diff [--profile <name>] [--json]` | no | Change plan (add/update/remove/no-op) — same engine as apply |
 | `aem apply [--profile] [--dry-run] [--yes]` | **yes** (with backup) | Materialize the profile into vendor-native config |
 | `aem drift [--profile] [--json]` | no | MCP/instruction/skill/runtime-version drift vs profile (exit 3 on drift) |
+| `aem web [--port 4310] [--no-open]` | no | Read-only local dashboard: runtimes, MCP, skills, findings, drift (127.0.0.1 only) |
 | `aem update [--check]` | no (updates aem itself) | Check GitHub releases; self-update via `npm install -g` from the release tag |
 
 Exit codes: `0` ok · `1` command error · `2` doctor found error/critical · `3` drift detected · `4` update available (`update --check`).
 
 `update` is the only command that touches the network, and only when you run it — scan/doctor/diff/apply stay fully offline (local-first policy).
+
+## Local dashboard
+
+```bash
+aem web            # http://127.0.0.1:4310, opens your browser
+```
+
+A single-file, fully offline visualization of the canonical model: runtime grid, MCP server table (env refs flagged inline-secret/missing), doctor findings, drift vs the project baseline or active profile, instructions and skills. Deliberately **read-only** — it binds `127.0.0.1`, serves GET only, and has no apply/import endpoints: mutations stay in the CLI where confirmation, backups, and audit live. No CDN, no build step, no telemetry — the roadmap's "defer web dashboards" applies to hosted/central dashboards, not this local viewer.
 
 ## Supported vendors
 
@@ -201,6 +210,7 @@ src/
     claude-code/       # ~/.claude.json, .mcp.json (JSON) — full apply support
     catalog.ts         # declarative read-only vendor catalog (41 vendors)
   output/              # human-readable text rendering
+  web/                 # aem web: read-only local dashboard (embedded single-file UI)
 ```
 
 Adapters implement `read / doctor / backupTargets / apply`; one adapter failing never blocks the others. Adding a read-only vendor is one `VendorSpec` entry in the catalog — the canonical model and planner stay untouched.
