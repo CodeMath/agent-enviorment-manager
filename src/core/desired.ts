@@ -62,6 +62,8 @@ export function snapshotToDesiredState(
 
   for (const runtime of snapshot.runtimes) {
     for (const server of runtime.mcpServers) {
+      // plugin-bundled servers are managed through the plugin entry
+      if (server.managedBy) continue;
       if (
         projectOnly &&
         !(projectDir && relativeToDir(server.sourcePath, projectDir) !== undefined)
@@ -136,6 +138,20 @@ export function snapshotToDesiredState(
       })),
   );
 
+  const plugins = snapshot.runtimes.flatMap((r) =>
+    r.plugins
+      .filter((p) => !projectOnly || p.scope === "project")
+      .map((p) => ({
+        id: p.id,
+        marketplace: p.marketplace,
+        marketplaceSource: p.marketplaceSource,
+        version: p.version,
+        scope: p.scope,
+        enabled: p.enabled,
+        applyTo: [r.id],
+      })),
+  );
+
   return {
     schemaVersion: SCHEMA_VERSION,
     kind: "DesiredState",
@@ -154,6 +170,7 @@ export function snapshotToDesiredState(
     mcpServers: mcpEntries,
     instructions,
     skills,
+    plugins,
     policies: {
       secretHandling: "forbid-inline",
       unknownFields: "preserve",

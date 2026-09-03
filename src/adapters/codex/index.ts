@@ -147,6 +147,7 @@ export const codexAdapter: AgentRuntimeAdapter = {
       mcpServers: installed ? readMcpServers(ctx, warnings) : [],
       instructionPacks: installed ? instructions : [],
       skillPacks: installed ? dedupedSkills : [],
+      plugins: [],
       warnings,
     };
   },

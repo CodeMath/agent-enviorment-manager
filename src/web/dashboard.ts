@@ -74,6 +74,7 @@ export const DASHBOARD_HTML = `<!doctype html>
   <div class="cards" id="cards"></div>
   <section><h2>Runtimes</h2><div id="runtimes"></div></section>
   <section><h2>MCP Servers</h2><div id="mcp"></div></section>
+  <section><h2>Plugins</h2><div id="plugins"></div></section>
   <section><h2>Findings</h2><div id="findings"></div></section>
   <section><h2>Drift</h2><div id="drift"></div></section>
   <div class="cols">
@@ -101,6 +102,7 @@ function render(o) {
   const runtimes = o.snapshot.runtimes;
   const installed = runtimes.filter((r) => r.installed);
   const servers = runtimes.flatMap((r) => r.mcpServers.map((s) => ({ ...s, runtime: r.id })));
+  const plugins = runtimes.flatMap((r) => (r.plugins || []).map((p) => ({ ...p, runtime: r.id })));
   const sev = (level) => o.findings.filter((f) => f.severity === level).length;
   const driftN = o.drift ? o.drift.items.length : null;
 
@@ -116,6 +118,7 @@ function render(o) {
     ["Findings", o.findings.length, sev("critical") + " crit · " + sev("error") + " err · " + sev("warning") + " warn"],
     ["Drift", driftN === null ? "—" : driftN, o.driftSource ? "vs " + o.driftSource + " profile" : "no profile"],
     ["Skills", runtimes.reduce((n, r) => n + r.skillPacks.length, 0), "across all vendors"],
+    ["Plugins", plugins.length, plugins.filter((p) => p.enabled).length + " enabled"],
   ].map(([l, n, s]) =>
     '<div class="card"><div class="num">' + esc(n) + '</div><div class="label">' + esc(l) + ' · ' + esc(s) + "</div></div>"
   ).join("");
@@ -138,8 +141,23 @@ function render(o) {
       "<tr><td><b>" + esc(s.id) + "</b></td><td>" + esc(s.runtime) + "</td><td>" + esc(s.transport) + "</td>" +
       '<td class="mono dim">' + esc(s.command ? s.command.executable + " " + s.command.args.join(" ") : s.url || "") + "</td>" +
       "<td>" + envChips(s.env) + "</td>" +
-      "<td>" + (s.enabled ? "" : '<span class="chip dim">disabled</span>') + "</td></tr>"
+      "<td>" + (s.enabled ? "" : '<span class="chip dim">disabled</span>') +
+      (s.managedBy ? '<span class="chip dim">plugin</span>' : "") + "</td></tr>"
     ).join("") + "</table>";
+
+  $("plugins").innerHTML = plugins.length === 0 ? '<div class="empty">none detected</div>' :
+    "<table><tr><th>plugin</th><th>runtime</th><th>version</th><th>scope</th><th>components</th><th>source</th><th></th></tr>" +
+    plugins.map((p) => {
+      const c = p.components || {};
+      const comps = [
+        c.skills ? c.skills + " skills" : "", c.agents ? c.agents + " agents" : "",
+        c.commands ? c.commands + " commands" : "", c.mcpServers ? c.mcpServers + " mcp" : "", c.hooks ? "hooks" : "",
+      ].filter(Boolean).map((x) => '<span class="chip">' + esc(x) + "</span>").join("");
+      return "<tr><td><b>" + esc(p.id) + "</b></td><td>" + esc(p.runtime) + "</td><td>" + esc(p.version || "—") + "</td>" +
+        "<td>" + esc(p.scope) + "</td><td>" + comps + '</td><td class="mono dim">' + esc(p.marketplaceSource || "") + "</td>" +
+        "<td>" + (p.enabled ? '<span class="chip ok">enabled</span>' : '<span class="chip dim">disabled</span>') +
+        (p.exists ? "" : '<span class="chip err">install missing</span>') + "</td></tr>";
+    }).join("") + "</table>";
 
   const sevClass = { critical: "critical", error: "error", warning: "warning", info: "info" };
   $("findings").innerHTML = o.findings.length === 0 ? '<div class="empty ok">No findings — environment looks healthy.</div>' :

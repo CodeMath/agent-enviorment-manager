@@ -4,3 +4,4 @@ dist/
 .omx/
 *.log
 .DS_Store
+.omc/

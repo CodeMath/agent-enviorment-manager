@@ -33,7 +33,9 @@ export function detectDrift(
     );
     const desiredById = new Map(desiredForRuntime.map((d) => [d.id, d]));
     const currentServers = runtime.mcpServers.filter(
-      (s) => !projectOnly || (projectDir && isUnderDir(s.sourcePath, projectDir)),
+      (s) =>
+        !s.managedBy && // plugin-bundled servers drift via their plugin entry
+        (!projectOnly || (projectDir && isUnderDir(s.sourcePath, projectDir))),
     );
     const currentById = new Map(currentServers.map((s) => [s.id, s]));
 
@@ -132,6 +134,61 @@ export function detectDrift(
           change: "added",
           resourceRef: `skill.${s.id}`,
           detail: `Skill "${s.id}" exists locally but is not in the profile.`,
+        });
+      }
+    }
+
+    // plugins (check-only: presence, enabled flag, version)
+    const desiredPlugins = desired.plugins.filter((p) =>
+      p.applyTo.includes(runtime.id),
+    );
+    const desiredPluginById = new Map(desiredPlugins.map((p) => [p.id, p]));
+    const currentPlugins = runtime.plugins.filter(
+      (p) => !projectOnly || p.scope === "project",
+    );
+    const currentPluginById = new Map(currentPlugins.map((p) => [p.id, p]));
+    for (const d of desiredPlugins) {
+      const c = currentPluginById.get(d.id);
+      if (!c) {
+        if (!d.enabled) continue;
+        const hint =
+          runtime.id === "claude-code"
+            ? d.marketplaceSource
+              ? ` Install with \`claude plugin marketplace add ${d.marketplaceSource.replace(/^github:/, "")}\` then \`claude plugin install ${d.id}\`.`
+              : ` Install with \`claude plugin install ${d.id}\`.`
+            : "";
+        items.push({
+          runtime: runtime.id,
+          kind: "plugin",
+          change: "removed",
+          resourceRef: `plugin.${d.id}`,
+          detail: `Plugin "${d.id}" is in the profile but not installed locally.${hint}`,
+        });
+        continue;
+      }
+      const diffs: string[] = [];
+      if (d.enabled !== c.enabled) diffs.push(`enabled: ${c.enabled} -> ${d.enabled}`);
+      if (d.version && c.version && d.version !== c.version) {
+        diffs.push(`version: ${d.version} -> ${c.version}`);
+      }
+      if (diffs.length > 0) {
+        items.push({
+          runtime: runtime.id,
+          kind: "plugin",
+          change: "changed",
+          resourceRef: `plugin.${d.id}`,
+          detail: `Plugin "${d.id}" differs: ${diffs.join("; ")}`,
+        });
+      }
+    }
+    for (const c of currentPlugins) {
+      if (!desiredPluginById.has(c.id)) {
+        items.push({
+          runtime: runtime.id,
+          kind: "plugin",
+          change: "added",
+          resourceRef: `plugin.${c.id}`,
+          detail: `Plugin "${c.id}"${c.version ? ` (${c.version})` : ""} is installed locally but is not in the profile.`,
         });
       }
     }

@@ -20,6 +20,11 @@ import type {
   AgentRuntimeAdapter,
 } from "../types.js";
 import { materialize, materializeDeep } from "../../core/storage/paths.js";
+import {
+  installedPluginsPath,
+  readClaudePlugins,
+  readEnabledPlugins,
+} from "./plugins.js";
 
 const ADAPTER_VERSION = "0.1.0";
 
@@ -130,14 +135,24 @@ export const claudeCodeAdapter: AgentRuntimeAdapter = {
         path.join(claudeDir(ctx), "agents"),
         "directory",
       ),
+      configSource(
+        "claude-user-plugins",
+        "user",
+        installedPluginsPath(ctx),
+        "json",
+      ),
     ].filter((s) => s.exists);
 
     const userState = readJson(userStatePath(ctx), warnings);
     const projectMcp = readJson(projectMcpPath(ctx), warnings);
+    const pluginRead = installed
+      ? readClaudePlugins(ctx, warnings)
+      : { plugins: [], mcpServers: [] };
     const mcpServers = installed
       ? [
           ...mcpServersFrom(userState, userStatePath(ctx), ctx, warnings),
           ...mcpServersFrom(projectMcp, projectMcpPath(ctx), ctx, warnings),
+          ...pluginRead.mcpServers,
         ]
       : [];
 
@@ -169,6 +184,7 @@ export const claudeCodeAdapter: AgentRuntimeAdapter = {
       mcpServers,
       instructionPacks: installed ? instructions : [],
       skillPacks: installed ? skills : [],
+      plugins: pluginRead.plugins,
       warnings,
     };
   },
@@ -186,6 +202,37 @@ export const claudeCodeAdapter: AgentRuntimeAdapter = {
         runtime: "claude-code",
         suggestedAction: "Ensure `claude` is on PATH and runnable.",
       });
+    }
+
+    for (const plugin of state.plugins) {
+      if (plugin.exists) continue;
+      findings.push({
+        id: `claude-plugin-missing-${plugin.id}`,
+        severity: plugin.enabled ? "error" : "warning",
+        category: "broken_path",
+        title: `Plugin install missing: ${plugin.id}`,
+        message: `Plugin "${plugin.id}" is registered in ${plugin.sourcePath} but its install directory ${plugin.path} does not exist.`,
+        runtime: "claude-code",
+        resourceRef: `plugin.${plugin.id}`,
+        suggestedAction: `Run \`claude plugin install ${plugin.id}\` to reinstall, or \`claude plugin uninstall ${plugin.id}\` to drop the stale entry.`,
+      });
+    }
+
+    if (state.installed) {
+      const registered = new Set(state.plugins.map((p) => p.id));
+      for (const [id, enabled] of readEnabledPlugins(ctx, [])) {
+        if (!enabled || registered.has(id)) continue;
+        findings.push({
+          id: `claude-plugin-not-installed-${id}`,
+          severity: "warning",
+          category: "unknown_config",
+          title: `Plugin enabled but not installed: ${id}`,
+          message: `settings.json enables plugin "${id}" but it is not present in ${installedPluginsPath(ctx)}.`,
+          runtime: "claude-code",
+          resourceRef: `plugin.${id}`,
+          suggestedAction: `Run \`claude plugin install ${id}\` or remove it from enabledPlugins.`,
+        });
+      }
     }
     return findings;
   },

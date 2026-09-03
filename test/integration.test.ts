@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { makeTempHome, seedFixtureHome } from "./helpers.js";
+import { makeTempHome, seedClaudePlugins, seedFixtureHome } from "./helpers.js";
 
 const CLI = path.join(import.meta.dir, "..", "dist", "cli", "index.js");
 
@@ -230,6 +230,86 @@ describe("CLI round-trip in a temp HOME", () => {
     expect(applyOut).toContain("check-only");
     const diffOut = aem(home, ["diff"], { expectFail: true });
     expect(diffOut).toContain("check-only");
+  }, 60000);
+
+  test("baseline update accepts drift into the resolved profile with backup + audit", () => {
+    const home = makeTempHome();
+    seedFixtureHome(home);
+    seedClaudePlugins(home);
+
+    // user profile exported before a plugin/server showed up locally
+    aem(home, ["export", "--profile", "base"]);
+    aem(home, ["profile", "use", "base"]);
+    const profileFile = path.join(home, ".aem", "profiles", "base.yaml");
+    const before = fs.readFileSync(profileFile, "utf8");
+
+    // already in sync -> no-op, exit 0, file untouched
+    expect(aem(home, ["baseline", "update", "--yes"])).toContain("already matches");
+    expect(fs.readFileSync(profileFile, "utf8")).toBe(before);
+
+    // introduce drift: new user-level MCP server + drop a plugin from the profile
+    const claudeState = JSON.parse(fs.readFileSync(path.join(home, ".claude.json"), "utf8"));
+    claudeState.mcpServers["newcomer"] = { command: "npx", args: ["-y", "newcomer"] };
+    fs.writeFileSync(path.join(home, ".claude.json"), JSON.stringify(claudeState, null, 2));
+    fs.writeFileSync(
+      profileFile,
+      before.replace(/  - id: discord@claude-plugins-official[\s\S]*?applyTo:\n      - claude-code\n/, ""),
+    );
+    const driftBefore = aem(home, ["drift"], { expectFail: true });
+    expect(driftBefore).toContain("mcp.newcomer");
+    expect(driftBefore).toContain("plugin.discord@claude-plugins-official");
+
+    // non-interactive without --yes: refuse, nothing written
+    const refused = aem(home, ["baseline", "update"], { expectFail: true });
+    expect(refused).toContain("--yes");
+    expect(aem(home, ["drift"], { expectFail: true })).toContain("mcp.newcomer");
+
+    // accept
+    const result = JSON.parse(aem(home, ["baseline", "update", "--yes", "--json"]));
+    expect(result.kind).toBe("BaselineUpdate");
+    expect(result.profile).toBe("base");
+    expect(result.source).toBe("active");
+    expect(result.accepted.map((i: any) => i.resourceRef).sort()).toEqual([
+      "mcp.newcomer",
+      "plugin.discord@claude-plugins-official",
+    ]);
+    expect(fs.existsSync(path.join(result.backup, ".aem", "profiles", "base.yaml"))).toBe(true);
+
+    const after = fs.readFileSync(profileFile, "utf8");
+    expect(after).toContain("id: newcomer");
+    expect(after).toContain("id: discord@claude-plugins-official");
+    expect(after).toContain("updatedAt:");
+    expect(after).not.toContain("sk-P2vyt");
+    expect(aem(home, ["drift"])).toContain("No drift");
+
+    const audit = fs.readFileSync(path.join(home, ".aem", "audit", "events.jsonl"), "utf8");
+    expect(audit).toContain("baseline update --profile base");
+    expect(audit).toContain("mcp.newcomer");
+  }, 60000);
+
+  test("baseline update regenerates a project-scope baseline in place", () => {
+    const home = makeTempHome();
+    seedFixtureHome(home);
+    const project = path.join(home, "project");
+    fs.writeFileSync(
+      path.join(project, ".mcp.json"),
+      JSON.stringify({ mcpServers: { proj: { command: "node", args: ["s.js"] } } }),
+    );
+    aem(home, ["init"]);
+    const file = path.join(project, ".aem", "desired-state.yaml");
+
+    const mcp = JSON.parse(fs.readFileSync(path.join(project, ".mcp.json"), "utf8"));
+    mcp.mcpServers["proj-extra"] = { command: "node", args: ["x.js"] };
+    fs.writeFileSync(path.join(project, ".mcp.json"), JSON.stringify(mcp));
+    expect(aem(home, ["drift"], { expectFail: true })).toContain("proj-extra");
+
+    const out = aem(home, ["baseline", "update", "--yes"]);
+    expect(out).toContain("1 item(s) accepted");
+    const yaml = fs.readFileSync(file, "utf8");
+    expect(yaml).toContain("scope: project");
+    expect(yaml).toContain("id: proj-extra");
+    expect(yaml).not.toContain("playwright"); // user-level servers still excluded
+    expect(aem(home, ["drift"])).toContain("No drift");
   }, 60000);
 
   test("import rejects a profile containing an inline secret", () => {

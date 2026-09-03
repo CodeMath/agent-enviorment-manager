@@ -73,6 +73,7 @@ export function renderScan(snapshot: EnvironmentSnapshot): string {
             : "",
       ].filter(Boolean);
       if (envRefs.length > 0) parts.push(`env refs: ${envRefs.join(", ")}`);
+      if (s.managedBy) parts.push(dim(`via plugin ${s.managedBy}`));
       lines.push(`- ${bold(s.id)}: ${parts.join(", ")}`);
     }
   }
@@ -96,6 +97,33 @@ export function renderScan(snapshot: EnvironmentSnapshot): string {
   for (const r of snapshot.runtimes) {
     if (r.skillPacks.length === 0) continue;
     lines.push(`- ${r.id}: ${r.skillPacks.length} skill(s) ${dim(`e.g. ${r.skillPacks.slice(0, 5).map((s) => s.id).join(", ")}`)}`);
+  }
+
+  const anyPlugins = snapshot.runtimes.some((r) => r.plugins.length > 0);
+  if (anyPlugins) {
+    lines.push("", bold("Plugins"));
+    for (const r of snapshot.runtimes) {
+      for (const p of r.plugins) {
+        const c = p.components;
+        const comps = [
+          c.skills && `${c.skills} skill(s)`,
+          c.agents && `${c.agents} agent(s)`,
+          c.commands && `${c.commands} command(s)`,
+          c.mcpServers && `${c.mcpServers} mcp`,
+          c.hooks && "hooks",
+        ].filter(Boolean);
+        const parts = [
+          r.id,
+          p.version ? `v${p.version}` : "",
+          p.enabled ? "enabled" : dim("disabled"),
+          p.scope,
+          p.exists ? "" : red("[install missing]"),
+        ].filter(Boolean);
+        lines.push(
+          `- ${bold(p.id)}: ${parts.join(", ")}${comps.length > 0 ? dim(` (${comps.join(", ")})`) : ""}`,
+        );
+      }
+    }
   }
 
   const warnings = snapshot.runtimes.flatMap((r) => r.warnings);

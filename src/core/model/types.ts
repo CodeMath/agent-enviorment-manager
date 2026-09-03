@@ -69,6 +69,12 @@ export interface McpServer {
   raw?: Record<string, unknown>;
   /** vendor config file this server was read from */
   sourcePath: string;
+  /**
+   * Set when the server is bundled by a plugin (PluginPack.id). Such servers
+   * are observed (scan/doctor) but never exported, planned, or drift-compared
+   * individually: the plugin entry is the unit of management.
+   */
+  managedBy?: string;
 }
 
 export interface InstructionPack {
@@ -86,6 +92,40 @@ export interface SkillPack {
   path: string;
 }
 
+/** Component counts discovered inside a plugin install directory. */
+export interface PluginComponents {
+  skills: number;
+  agents: number;
+  commands: number;
+  hooks: boolean;
+  mcpServers: number;
+}
+
+/**
+ * A vendor plugin/extension registered through the vendor's own plugin
+ * system (e.g. Claude Code `~/.claude/plugins`). Plugins bundle skills,
+ * agents, commands, hooks and MCP servers and are versioned as a unit.
+ */
+export interface PluginPack {
+  /** vendor-native id, e.g. "oh-my-claudecode@omc" */
+  id: string;
+  name: string;
+  marketplace: string;
+  /** marketplace origin, e.g. "github:owner/repo" or a git url */
+  marketplaceSource?: string;
+  version?: string;
+  scope: "user" | "project";
+  /** enabled per vendor settings (user + project layers) */
+  enabled: boolean;
+  /** install directory recorded by the vendor registry */
+  path: string;
+  /** whether the install directory actually exists */
+  exists: boolean;
+  components: PluginComponents;
+  /** vendor registry file this entry was read from */
+  sourcePath: string;
+}
+
 export interface RuntimeState {
   id: string;
   name: string;
@@ -96,6 +136,7 @@ export interface RuntimeState {
   mcpServers: McpServer[];
   instructionPacks: InstructionPack[];
   skillPacks: SkillPack[];
+  plugins: PluginPack[];
   /** adapter-level parse warnings that should surface in scan output */
   warnings: string[];
 }
@@ -147,6 +188,18 @@ export interface DesiredSkill {
   applyTo: string[];
 }
 
+/** Plugins are check-only: drift reports them, apply never installs them. */
+export interface DesiredPlugin {
+  id: string;
+  marketplace: string;
+  marketplaceSource?: string;
+  /** version observed at export time; drift reports a change when set */
+  version?: string;
+  scope: "user" | "project";
+  enabled: boolean;
+  applyTo: string[];
+}
+
 export interface DesiredState {
   schemaVersion: string;
   kind: "DesiredState";
@@ -154,6 +207,8 @@ export interface DesiredState {
     name: string;
     description?: string;
     createdAt: string;
+    /** last time `aem baseline update` accepted the current state into this profile */
+    updatedAt?: string;
     /**
      * user (default): full user-level environment profile (~/.aem/profiles).
      * project: repo-committed profile (<repo>/.aem/desired-state.yaml)
@@ -169,6 +224,7 @@ export interface DesiredState {
   mcpServers: DesiredMcpServer[];
   instructions: DesiredInstruction[];
   skills: DesiredSkill[];
+  plugins: DesiredPlugin[];
   policies: {
     secretHandling: "forbid-inline";
     unknownFields: "preserve";
@@ -204,7 +260,7 @@ export interface ChangePlan {
 
 export interface DriftItem {
   runtime: string;
-  kind: "mcp" | "instruction" | "skill" | "runtime-version";
+  kind: "mcp" | "instruction" | "skill" | "plugin" | "runtime-version";
   change: "added" | "removed" | "changed";
   resourceRef: string;
   detail: string;

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
+import { runBaselineUpdate } from "./commands/baseline.js";
 import { runApply, runDiff } from "./commands/diffApply.js";
 import { runDoctorCommand } from "./commands/doctor.js";
 import { runDrift } from "./commands/drift.js";
@@ -108,6 +109,20 @@ program
   .option("--vendor <vendor>", "vendor id (codex, claude, gemini, cursor, ...) or all", "all")
   .option("--json", "machine-readable JSON output")
   .action((opts) => runDrift(opts));
+
+const baseline = program
+  .command("baseline")
+  .description("Manage the profile the environment is checked against");
+baseline
+  .command("update")
+  .description(
+    "Accept the current environment as the new desired state of the resolved profile (backs up the previous one)",
+  )
+  .option("--profile <name>", "profile name (defaults to project baseline, then active profile)")
+  .option("--vendor <vendor>", "vendor id (codex, claude, gemini, cursor, ...) or all", "all")
+  .option("--yes", "update without interactive confirmation")
+  .option("--json", "machine-readable JSON output")
+  .action((opts) => runBaselineUpdate(opts));
 
 program
   .command("web")

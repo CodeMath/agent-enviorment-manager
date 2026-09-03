@@ -76,6 +76,13 @@ export function validateDesiredState(doc: unknown): DesiredState {
       fail("schema", `mcpServers.${s.id} is missing allowedRuntimes.`);
     }
   }
+  // plugins is optional in the profile file; absent means "none declared"
+  if (d.plugins === undefined) d.plugins = [];
+  if (!Array.isArray(d.plugins)) fail("schema", "plugins must be a list.");
+  for (const p of d.plugins) {
+    if (!p.id) fail("schema", "plugins entry is missing id.");
+    if (!Array.isArray(p.applyTo)) fail("schema", `plugins.${p.id} is missing applyTo.`);
+  }
   return d as DesiredState;
 }
 

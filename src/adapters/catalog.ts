@@ -438,6 +438,7 @@ export function createCatalogAdapter(spec: VendorSpec): AgentRuntimeAdapter {
         mcpServers: installed ? readMcp(ctx, spec, warnings) : [],
         instructionPacks: installed ? instructions : [],
         skillPacks: installed ? skills : [],
+        plugins: [],
         warnings,
       };
     },

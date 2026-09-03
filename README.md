@@ -2,7 +2,7 @@
 
 Vendor-neutral desired-state manager for your **local AI agent environment**.
 
-`aem` detects what is installed and configured across your AI coding agents (Claude Code, Codex, and 10 more — runtimes, MCP servers, instructions, skills), normalizes it into a canonical model, and lets you save/restore/verify that environment as a declarative profile — with dry-run diffs, backups, and secret redaction built in.
+`aem` detects what is installed and configured across your AI coding agents (Claude Code, Codex, and 40+ more — runtimes, MCP servers, instructions, skills, plugins), normalizes it into a canonical model, and lets you save/restore/verify that environment as a declarative profile — with dry-run diffs, backups, and secret redaction built in.
 
 > **Show me what my agent environment contains, how it differs from my saved standard, and bring it back in line — safely.**
 
@@ -34,7 +34,7 @@ Full rationale, scope boundaries, and the Free → Team → Enterprise trajector
 From a release (recommended — prebuilt tarball, no local build needed):
 
 ```bash
-npm install -g https://github.com/CodeMath/agent-enviorment-manager/releases/download/v0.4.0/agent-environment-manager-0.4.0.tgz
+npm install -g https://github.com/CodeMath/agent-enviorment-manager/releases/download/v0.6.0/agent-environment-manager-0.6.0.tgz
 aem --version
 ```
 
@@ -91,7 +91,7 @@ aem doctor               # includes drift_detected findings for the baseline
 
 | Command | Writes vendor config? | Purpose |
 | --- | --- | --- |
-| `aem scan [--json] [--vendor <id>\|all] [--project <path>]` | no | Detect runtimes, config sources, MCP servers, instructions, skills |
+| `aem scan [--json] [--vendor <id>\|all] [--project <path>]` | no | Detect runtimes, config sources, MCP servers, instructions, skills, plugins |
 | `aem init [--force]` | no (writes `<cwd>/.aem/`) | Generate a committable project-scope baseline (`.aem/desired-state.yaml`) |
 | `aem doctor [--json] [--vendor] [--profile <name>]` | no | Findings: `missing_env`, `secret_inline`, `broken_path`, `duplicate_mcp`, `dangerous_command`, `unknown_config`, `stale_profile`, `drift_detected`, `unsupported_version` |
 | `aem export --profile <name> [--out <path>] [--force]` | no | Current state → redacted DesiredState YAML |
@@ -99,8 +99,9 @@ aem doctor               # includes drift_detected findings for the baseline
 | `aem profile list/show/use/delete` | no | Manage profiles; `use` sets the default for diff/apply/drift |
 | `aem diff [--profile <name>] [--json]` | no | Change plan (add/update/remove/no-op) — same engine as apply |
 | `aem apply [--profile] [--dry-run] [--yes]` | **yes** (with backup) | Materialize the profile into vendor-native config |
-| `aem drift [--profile] [--json]` | no | MCP/instruction/skill/runtime-version drift vs profile (exit 3 on drift) |
-| `aem web [--port 4310] [--no-open]` | no | Read-only local dashboard: runtimes, MCP, skills, findings, drift (127.0.0.1 only) |
+| `aem drift [--profile] [--json]` | no | MCP/instruction/skill/plugin/runtime-version drift vs profile (exit 3 on drift) |
+| `aem baseline update [--profile] [--yes] [--json]` | no (rewrites the profile) | Accept the current environment as the new desired state of the resolved profile; previous profile backed up, audit event recorded |
+| `aem web [--port 4310] [--no-open]` | no | Read-only local dashboard: runtimes, MCP, plugins, skills, findings, drift (127.0.0.1 only) |
 | `aem update [--check]` | no (updates aem itself) | Check GitHub releases; self-update via `npm install -g` from the release tag |
 
 Exit codes: `0` ok · `1` command error · `2` doctor found error/critical · `3` drift detected · `4` update available (`update --check`).
@@ -113,7 +114,7 @@ Exit codes: `0` ok · `1` command error · `2` doctor found error/critical · `3
 aem web            # http://127.0.0.1:4310, opens your browser
 ```
 
-A single-file, fully offline visualization of the canonical model: runtime grid, MCP server table (env refs flagged inline-secret/missing), doctor findings, drift vs the project baseline or active profile, instructions and skills. Deliberately **read-only** — it binds `127.0.0.1`, serves GET only, and has no apply/import endpoints: mutations stay in the CLI where confirmation, backups, and audit live. No CDN, no build step, no telemetry — the roadmap's "defer web dashboards" applies to hosted/central dashboards, not this local viewer.
+A single-file, fully offline visualization of the canonical model: runtime grid, MCP server table (env refs flagged inline-secret/missing), plugin table, doctor findings, drift vs the project baseline or active profile, instructions and skills. Deliberately **read-only** — it binds `127.0.0.1`, serves GET only, and has no apply/import endpoints: mutations stay in the CLI where confirmation, backups, and audit live. No CDN, no build step, no telemetry — the roadmap's "defer web dashboards" applies to hosted/central dashboards, not this local viewer.
 
 ## Supported vendors
 
@@ -122,7 +123,7 @@ Vendor inventory cross-checked against the AI coding agent list maintained by [t
 | Vendor | Detect / Doctor / Drift | Apply | Config read |
 | --- | :---: | :---: | --- |
 | Codex | ✅ | ✅ | `~/.codex/config.toml` (`[mcp_servers.*]`), `AGENTS.md`, skills |
-| Claude Code | ✅ | ✅ | `~/.claude.json` (`mcpServers`), `.mcp.json`, settings, `CLAUDE.md`, skills/agents |
+| Claude Code | ✅ | ✅ | `~/.claude.json` (`mcpServers`), `.mcp.json`, settings, `CLAUDE.md`, skills/agents, plugins (`~/.claude/plugins`) |
 | Gemini CLI | ✅ | read-only | `~/.gemini/settings.json` (`mcpServers`), `GEMINI.md` |
 | Qwen Code | ✅ | read-only | `~/.qwen/settings.json`, `QWEN.md` |
 | Cursor | ✅ | read-only | `~/.cursor/mcp.json`, project `.cursor/mcp.json`, `.cursorrules` |
@@ -147,14 +148,16 @@ Read-only vendors are declared in a single declarative catalog (`src/adapters/ca
 
 - **User profiles** (`~/.aem/profiles/*.yaml`, via `aem export`) capture the full environment — user-level and project-level resources — and drive `diff`/`apply`/`drift`.
 - **Project profiles** (`<repo>/.aem/desired-state.yaml`, via `aem init`) capture **only project-scope resources**: project MCP config (e.g. `.mcp.json`, `.cursor/mcp.json`), project instructions (`AGENTS.md`, `CLAUDE.md`), and project skills. Personal user-level servers never leak into the repo-committed file.
-- Profile resolution order for `drift`/`doctor` (and `diff`/`apply`): explicit `--profile` → `<cwd>/.aem/desired-state.yaml` when present → the active profile.
+- Profile resolution order for `drift`/`doctor`/`baseline update` (and `diff`/`apply`): explicit `--profile` → `<cwd>/.aem/desired-state.yaml` when present → the active profile.
+- Closing the loop: when `drift` reports intentional changes, `aem baseline update` pulls the current environment into the profile (the inverse of `apply`). It shows the drift items being accepted, asks for confirmation (`--yes` for non-interactive), keeps the profile's scope/description/`createdAt`, stamps `updatedAt`, backs up the previous file to `~/.aem/backups/<ts>/profiles/`, and logs the accepted items to the audit log. For a project baseline it regenerates `.aem/desired-state.yaml` in place (same as `init --force`, but only after showing what changed).
 - Project profiles are **check-only** in the MVP (per spec: project dir support is read-only): `drift` and `doctor` validate them — scope-aware, so user-level changes never flag a project baseline — while `diff`/`apply` refuse them with a clear error. This is the on-ramp to the Phase 3 team baseline (`.aem/team.yaml`).
 - Portability: home paths become `~`, project paths become `${PROJECT_ROOT}` (embedded occurrences included), project instruction/skill paths are stored `./`-relative. Symlink spellings (macOS `/var` vs `/private/var`, `/tmp` vs `/private/tmp`) are treated as identical.
 
 ## What gets managed vs observed
 
 - **Managed by apply (MVP):** MCP servers — Codex `~/.codex/config.toml` `[mcp_servers.*]`, Claude Code `~/.claude.json` `mcpServers`. Servers present locally but absent from the profile are left untouched (surfaced by `drift`, not deleted).
-- **Observed read-only:** instructions (`AGENTS.md`, `CLAUDE.md`), skills/agents directories, config sources, runtime versions, and all catalog vendors above. These feed `scan`/`doctor`/`drift` and are recorded in exported profiles.
+- **Observed read-only:** instructions (`AGENTS.md`, `CLAUDE.md`), skills/agents directories, plugins, config sources, runtime versions, and all catalog vendors above. These feed `scan`/`doctor`/`drift` and are recorded in exported profiles.
+- **Claude Code plugins** (`~/.claude/plugins/installed_plugins.json` + `enabledPlugins` in user/project `settings.json`) are inventoried as a unit: id (`name@marketplace`), version, scope, enabled flag, marketplace origin, and bundled components (skills/agents/commands/hooks/MCP). MCP servers shipped by an *enabled* plugin appear in `scan`/`doctor` as `plugin:<name>:<server>` (with `${CLAUDE_PLUGIN_ROOT}` expanded) but are never exported or applied individually — the plugin entry is the managed unit. `drift` reports plugins missing/extra/disabled/version-changed with the `claude plugin marketplace add … && claude plugin install …` hint; `doctor` flags registry entries whose install dir is gone and plugins enabled in settings but not installed. Installing plugins stays with the vendor CLI (network + marketplace trust), so plugins are check-only.
 - Vendor binary versions are cached in `~/.aem/adapters/cache.json` (keyed by binary path + mtime) so repeated scans stay fast (<0.1s warm).
 
 ## Safety model
@@ -220,7 +223,7 @@ Adapters implement `read / doctor / backupTargets / apply`; one adapter failing 
 Phases refer to `_docs/02-side-project-roadmap.md`; implementation status is tracked in [`_docs/04-implementation-status.md`](_docs/04-implementation-status.md).
 
 - **Phase 1 — Local MVP: complete** (v0.1.0). All eight core commands, Claude Code + Codex full adapters, safe apply with backups, drift detection, secret redaction. Milestones M0–M5 done.
-- **Phase 2 — Personal productivity: partial.** Done ahead of plan: `aem init` + project-scope profiles (v0.4.0), machine-portable profiles (`~`/`${PROJECT_ROOT}`, v0.3.0), self-update via GitHub releases (v0.1.0+). Remaining: `aem status`, `aem history`, profile templates, shell completion, Homebrew, CI read-only check.
+- **Phase 2 — Personal productivity: partial.** Done ahead of plan: `aem init` + project-scope profiles (v0.4.0), machine-portable profiles (`~`/`${PROJECT_ROOT}`, v0.3.0), `aem baseline update` + Claude Code plugin inventory (v0.6.0), self-update via GitHub releases (v0.1.0+). Remaining: `aem status`, `aem history`, profile templates, shell completion, Homebrew, CI read-only check.
 - **Phase 3 — Team baseline: next.** `.aem/team.yaml`, policy lint, `aem check --team`, role profiles. Project profiles (check-only) are the designed on-ramp.
 - **Phases 4–5 — Governance connectors / enterprise control plane: not started** (deliberately — the roadmap forbids SaaS before the Free/Team CLI is proven).
 

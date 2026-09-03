@@ -26,6 +26,7 @@ export function buildSnapshot(
         mcpServers: [],
         instructionPacks: [],
         skillPacks: [],
+        plugins: [],
         warnings: [
           `Adapter failed: ${err instanceof Error ? err.message : String(err)}`,
         ],
