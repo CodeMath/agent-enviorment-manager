@@ -34,7 +34,7 @@ Full rationale, scope boundaries, and the Free → Team → Enterprise trajector
 From a release (recommended — prebuilt tarball, no local build needed):
 
 ```bash
-npm install -g https://github.com/CodeMath/agent-enviorment-manager/releases/download/v0.6.0/agent-environment-manager-0.6.0.tgz
+npm install -g https://github.com/CodeMath/agent-enviorment-manager/releases/download/v0.7.0/agent-environment-manager-0.7.0.tgz
 aem --version
 ```
 
@@ -92,8 +92,9 @@ aem doctor               # includes drift_detected findings for the baseline
 | Command | Writes vendor config? | Purpose |
 | --- | --- | --- |
 | `aem scan [--json] [--vendor <id>\|all] [--project <path>]` | no | Detect runtimes, config sources, MCP servers, instructions, skills, plugins |
-| `aem init [--force]` | no (writes `<cwd>/.aem/`) | Generate a committable project-scope baseline (`.aem/desired-state.yaml`) |
-| `aem doctor [--json] [--vendor] [--profile <name>]` | no | Findings: `missing_env`, `secret_inline`, `broken_path`, `duplicate_mcp`, `dangerous_command`, `unknown_config`, `stale_profile`, `drift_detected`, `unsupported_version` |
+| `aem init [--force]` | no (writes `<cwd>/.aem/`) | Generate a committable project-scope baseline (`.aem/desired-state.yaml`) and a permission policy scaffold (`.aem/policy.yaml`) |
+| `aem doctor [--json] [--vendor] [--profile <name>]` | no | Findings: `missing_env`, `secret_inline`, `broken_path`, `duplicate_mcp`, `dangerous_command`, `unknown_config`, `stale_profile`, `drift_detected`, `unsupported_version`, `permission_risk`, `hook_risk`, `policy_violation` |
+| `aem check [--policy <file>] [--json]` | no | Verify main agent, sub-agents, hooks and plugins against the vendor-neutral `.aem/policy.yaml` ceiling (exit 5 on violation) |
 | `aem export --profile <name> [--out <path>] [--force]` | no | Current state → redacted DesiredState YAML |
 | `aem import <file> [--name <n>] [--force]` | no | Validate + register a profile (rejects inline secrets, wrong schema) |
 | `aem profile list/show/use/delete` | no | Manage profiles; `use` sets the default for diff/apply/drift |
@@ -104,7 +105,7 @@ aem doctor               # includes drift_detected findings for the baseline
 | `aem web [--port 4310] [--no-open]` | no | Read-only local dashboard: runtimes, MCP, plugins, skills, findings, drift (127.0.0.1 only) |
 | `aem update [--check]` | no (updates aem itself) | Check GitHub releases; self-update via `npm install -g` from the release tag |
 
-Exit codes: `0` ok · `1` command error · `2` doctor found error/critical · `3` drift detected · `4` update available (`update --check`).
+Exit codes: `0` ok · `1` command error · `2` doctor found error/critical · `3` drift detected · `4` update available (`update --check`) · `5` policy violation (`check`).
 
 `update` is the only command that touches the network, and only when you run it — scan/doctor/diff/apply stay fully offline (local-first policy).
 
@@ -116,14 +117,25 @@ aem web            # http://127.0.0.1:4310, opens your browser
 
 A single-file, fully offline visualization of the canonical model: runtime grid, MCP server table (env refs flagged inline-secret/missing), plugin table, doctor findings, drift vs the project baseline or active profile, instructions and skills. Deliberately **read-only** — it binds `127.0.0.1`, serves GET only, and has no apply/import endpoints: mutations stay in the CLI where confirmation, backups, and audit live. No CDN, no build step, no telemetry — the roadmap's "defer web dashboards" applies to hosted/central dashboards, not this local viewer.
 
+## Permissions: what is my agent allowed to do?
+
+Configuration mostly freezes at project start; after that, permissions arrive through **extensions** — plugins bring hooks (including `PermissionRequest`/`PreToolUse` hooks that can answer prompts), bundled MCP servers, and sub-agents with their own tool lists. `aem` reads that whole surface into one vendor-neutral capability model (`shell`, `filesystem`, `network`, `mcp`, `bypassPrompts`, `model`) with a per-field fidelity tag (`exact`/`lossy`) so lossy vendor mappings are never presented as facts:
+
+- **Claude Code**: `permissions.allow/deny/ask`, `defaultMode`, `skipDangerousModePermissionPrompt`, managed-settings presence, `hooks` from every settings layer and every enabled plugin, sub-agents from `~/.claude/agents`, `.claude/agents`, and plugin `agents/` (frontmatter `tools`/`disallowedTools`/`model`).
+- **Codex**: `approval_policy`, `sandbox_mode`, `[sandbox_workspace_write]`, active `profile`, `[projects.*] trust_level`.
+
+`aem scan` prints the effective capabilities of each runtime and of every sub-agent (narrowed from the main agent — sub-agents can only lose capabilities, never gain them), plus hook registrations per origin. `aem doctor` flags bypassed prompts, full shell + network, broad trusted paths, and permission-influencing hooks. `aem init` writes `.aem/policy.yaml`: a ceiling derived from the current state (with `bypassPrompts: false` forced, so an unsafe local setup is flagged on day one), hook event rules (`PermissionRequest: deny`, everything else `review`), a default sub-agent ceiling, and the plugin allow list. `aem check` then verifies the local reality against it — main ceiling, per-agent ceiling/`requires`, hook events/origins, plugin allow/deny — and exits 5 on violations. The policy knows no vendor ids: commit it and every team member is checked on whichever vendor they use.
+
+`aem` is a policy compiler and auditor, not a runtime enforcer: enforcement stays with the vendor's own mechanisms (Claude `permissions`/managed settings, Codex sandbox/approval). Compiling `policy.yaml` back into vendor-native settings is the next step (v0.8); v0.7 never writes vendor config. Design notes: `_docs/05-permission-layer.md`.
+
 ## Supported vendors
 
 Vendor inventory cross-checked against the AI coding agent list maintained by [tokscale](https://github.com/junhoyeo/tokscale).
 
 | Vendor | Detect / Doctor / Drift | Apply | Config read |
 | --- | :---: | :---: | --- |
-| Codex | ✅ | ✅ | `~/.codex/config.toml` (`[mcp_servers.*]`), `AGENTS.md`, skills |
-| Claude Code | ✅ | ✅ | `~/.claude.json` (`mcpServers`), `.mcp.json`, settings, `CLAUDE.md`, skills/agents, plugins (`~/.claude/plugins`) |
+| Codex | ✅ | ✅ | `~/.codex/config.toml` (`[mcp_servers.*]`, `approval_policy`, `sandbox_mode`, `[projects.*]`), `AGENTS.md`, skills |
+| Claude Code | ✅ | ✅ | `~/.claude.json` (`mcpServers`), `.mcp.json`, settings (`permissions`, `hooks`), `CLAUDE.md`, skills/agents, plugins (`~/.claude/plugins`) |
 | Gemini CLI | ✅ | read-only | `~/.gemini/settings.json` (`mcpServers`), `GEMINI.md` |
 | Qwen Code | ✅ | read-only | `~/.qwen/settings.json`, `QWEN.md` |
 | Cursor | ✅ | read-only | `~/.cursor/mcp.json`, project `.cursor/mcp.json`, `.cursorrules` |
@@ -151,12 +163,13 @@ Read-only vendors are declared in a single declarative catalog (`src/adapters/ca
 - Profile resolution order for `drift`/`doctor`/`baseline update` (and `diff`/`apply`): explicit `--profile` → `<cwd>/.aem/desired-state.yaml` when present → the active profile.
 - Closing the loop: when `drift` reports intentional changes, `aem baseline update` pulls the current environment into the profile (the inverse of `apply`). It shows the drift items being accepted, asks for confirmation (`--yes` for non-interactive), keeps the profile's scope/description/`createdAt`, stamps `updatedAt`, backs up the previous file to `~/.aem/backups/<ts>/profiles/`, and logs the accepted items to the audit log. For a project baseline it regenerates `.aem/desired-state.yaml` in place (same as `init --force`, but only after showing what changed).
 - Project profiles are **check-only** in the MVP (per spec: project dir support is read-only): `drift` and `doctor` validate them — scope-aware, so user-level changes never flag a project baseline — while `diff`/`apply` refuse them with a clear error. This is the on-ramp to the Phase 3 team baseline (`.aem/team.yaml`).
+- Vendor-specific MCP fields (`raw`) are stored per runtime (`raw: { codex: {...} }`) so a server shared across vendors via `allowedRuntimes` never leaks one vendor's keys into another's config on apply.
 - Portability: home paths become `~`, project paths become `${PROJECT_ROOT}` (embedded occurrences included), project instruction/skill paths are stored `./`-relative. Symlink spellings (macOS `/var` vs `/private/var`, `/tmp` vs `/private/tmp`) are treated as identical.
 
 ## What gets managed vs observed
 
 - **Managed by apply (MVP):** MCP servers — Codex `~/.codex/config.toml` `[mcp_servers.*]`, Claude Code `~/.claude.json` `mcpServers`. Servers present locally but absent from the profile are left untouched (surfaced by `drift`, not deleted).
-- **Observed read-only:** instructions (`AGENTS.md`, `CLAUDE.md`), skills/agents directories, plugins, config sources, runtime versions, and all catalog vendors above. These feed `scan`/`doctor`/`drift` and are recorded in exported profiles.
+- **Observed read-only:** instructions (`AGENTS.md`, `CLAUDE.md`), skills/agents directories, plugins, permission surfaces, hooks, sub-agent definitions, config sources, runtime versions, and all catalog vendors above. These feed `scan`/`doctor`/`drift` and are recorded in exported profiles.
 - **Claude Code plugins** (`~/.claude/plugins/installed_plugins.json` + `enabledPlugins` in user/project `settings.json`) are inventoried as a unit: id (`name@marketplace`), version, scope, enabled flag, marketplace origin, and bundled components (skills/agents/commands/hooks/MCP). MCP servers shipped by an *enabled* plugin appear in `scan`/`doctor` as `plugin:<name>:<server>` (with `${CLAUDE_PLUGIN_ROOT}` expanded) but are never exported or applied individually — the plugin entry is the managed unit. `drift` reports plugins missing/extra/disabled/version-changed with the `claude plugin marketplace add … && claude plugin install …` hint; `doctor` flags registry entries whose install dir is gone and plugins enabled in settings but not installed. Installing plugins stays with the vendor CLI (network + marketplace trust), so plugins are check-only.
 - Vendor binary versions are cached in `~/.aem/adapters/cache.json` (keyed by binary path + mtime) so repeated scans stay fast (<0.1s warm).
 

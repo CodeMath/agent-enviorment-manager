@@ -27,6 +27,8 @@ export function buildSnapshot(
         instructionPacks: [],
         skillPacks: [],
         plugins: [],
+        hooks: [],
+        agents: [],
         warnings: [
           `Adapter failed: ${err instanceof Error ? err.message : String(err)}`,
         ],

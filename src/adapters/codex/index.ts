@@ -15,6 +15,7 @@ import {
   normalizeMcpBlock,
   skillPacksFromDir,
 } from "../shared.js";
+import { readCodexPermissions } from "./permissions.js";
 import type {
   AdapterApplyResult,
   AdapterContext,
@@ -34,19 +35,11 @@ function configPath(ctx: AdapterContext): string {
 
 function readMcpServers(
   ctx: AdapterContext,
+  doc: Record<string, unknown> | undefined,
   warnings: string[],
 ): McpServer[] {
   const file = configPath(ctx);
-  if (!fs.existsSync(file)) return [];
-  let doc: Record<string, unknown>;
-  try {
-    doc = parseToml(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
-  } catch (err) {
-    warnings.push(
-      `Could not parse ${file}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return [];
-  }
+  if (doc === undefined) return [];
   const table = doc.mcp_servers;
   if (table === undefined) return [];
   if (table === null || typeof table !== "object" || Array.isArray(table)) {
@@ -66,6 +59,19 @@ function readMcpServers(
   return servers;
 }
 
+function readConfig(ctx: AdapterContext, warnings: string[]): Record<string, unknown> | undefined {
+  const file = configPath(ctx);
+  if (!fs.existsSync(file)) return undefined;
+  try {
+    return parseToml(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+  } catch (err) {
+    warnings.push(
+      `Could not parse ${file}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return undefined;
+  }
+}
+
 export const codexAdapter: AgentRuntimeAdapter = {
   id: "codex",
   displayName: "Codex",
@@ -76,6 +82,7 @@ export const codexAdapter: AgentRuntimeAdapter = {
     const warnings: string[] = [];
     const exec = detectVersion(ctx, "codex");
     const installed = exec.installed || fs.existsSync(codexDir(ctx));
+    const config = installed ? readConfig(ctx, warnings) : undefined;
 
     const sources = [
       configSource("codex-user-config", "user", configPath(ctx), "toml"),
@@ -136,6 +143,7 @@ export const codexAdapter: AgentRuntimeAdapter = {
       seen.add(s.id);
       return true;
     });
+    const mcpServers = installed ? readMcpServers(ctx, config, warnings) : [];
 
     return {
       id: "codex",
@@ -144,10 +152,20 @@ export const codexAdapter: AgentRuntimeAdapter = {
       version: exec.version,
       adapterVersion: ADAPTER_VERSION,
       configSources: sources,
-      mcpServers: installed ? readMcpServers(ctx, warnings) : [],
+      mcpServers,
       instructionPacks: installed ? instructions : [],
       skillPacks: installed ? dedupedSkills : [],
       plugins: [],
+      permissions: installed
+        ? readCodexPermissions(
+            ctx,
+            config,
+            mcpServers.filter((server) => server.enabled).map((server) => server.id),
+            warnings,
+          )
+        : undefined,
+      hooks: [],
+      agents: [],
       warnings,
     };
   },
@@ -267,6 +285,7 @@ function renderCodexMcpBlock(
   if (Object.keys(env).length > 0) block.env = env;
   else delete block.env;
 
-  if (d.raw) Object.assign(block, materializeDeep(d.raw, projectDir));
+  const own = d.raw?.codex;
+  if (own) Object.assign(block, materializeDeep(own, projectDir));
   return block;
 }

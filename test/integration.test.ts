@@ -312,6 +312,58 @@ describe("CLI round-trip in a temp HOME", () => {
     expect(aem(home, ["drift"])).toContain("No drift");
   }, 60000);
 
+  test("init scaffolds .aem/policy.yaml and check flags bypass + PermissionRequest hook", () => {
+    const home = makeTempHome();
+    seedFixtureHome(home);
+    seedClaudePlugins(home);
+    const project = path.join(home, "project");
+    fs.mkdirSync(path.join(project, ".claude"), { recursive: true });
+    fs.writeFileSync(
+      path.join(project, ".claude", "settings.local.json"),
+      JSON.stringify({ permissions: { defaultMode: "bypassPermissions" } }),
+    );
+
+    // no policy yet -> check fails with guidance
+    expect(aem(home, ["check"], { expectFail: true })).toContain("aem init");
+
+    const initOut = aem(home, ["init"]);
+    expect(initOut).toContain("Policy ceiling");
+    const policyFile = path.join(project, ".aem", "policy.yaml");
+    const policy = fs.readFileSync(policyFile, "utf8");
+    expect(policy).toContain("kind: Policy");
+    expect(policy).toContain("bypassPrompts: false # currently TRUE locally");
+    expect(policy).toContain("PermissionRequest: deny");
+    expect(policy).toContain("- oh-my-claudecode@omc");
+    expect(policy).not.toContain("sk-P2vyt");
+
+    // check: bypass + plugin PermissionRequest hook are violations (exit 5)
+    const checkOut = aem(home, ["check"], { expectFail: true });
+    expect(checkOut).toContain("ceiling.bypassPrompts");
+    expect(checkOut).toContain("hooks.events.PermissionRequest");
+    const report = JSON.parse(aem(home, ["check", "--json"], { expectFail: true }));
+    expect(report.kind).toBe("CheckReport");
+    expect(report.items.filter((i: any) => i.severity === "error").map((i: any) => i.rule).sort()).toEqual([
+      "ceiling.bypassPrompts",
+      "hooks.events.PermissionRequest",
+    ]);
+
+    // doctor picks the project policy up automatically
+    const doctorOut = aem(home, ["doctor"], { expectFail: true });
+    expect(doctorOut).toContain("policy_violation");
+    expect(doctorOut).toContain("permission_risk");
+
+    // fix the bypass and relax the hook rule -> only the hook remains, then clean
+    fs.rmSync(path.join(project, ".claude", "settings.local.json"));
+    expect(aem(home, ["check"], { expectFail: true })).not.toContain("ceiling.bypassPrompts");
+    fs.writeFileSync(policyFile, policy.replace("PermissionRequest: deny", "PermissionRequest: review"));
+    const clean = aem(home, ["check"]);
+    expect(clean).toContain("No violations");
+
+    // init --force regenerates the policy scaffold too
+    aem(home, ["init", "--force"]);
+    expect(fs.readFileSync(policyFile, "utf8")).toContain("PermissionRequest: deny");
+  }, 60000);
+
   test("import rejects a profile containing an inline secret", () => {
     const home = makeTempHome();
     seedFixtureHome(home);

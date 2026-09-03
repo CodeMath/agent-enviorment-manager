@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import fs from "node:fs";
+import path from "node:path";
 import { claudeCodeAdapter } from "../src/adapters/claude-code/index.js";
 import { codexAdapter } from "../src/adapters/codex/index.js";
 import { snapshotToDesiredState } from "../src/core/desired.js";
@@ -70,6 +72,37 @@ describe("planner", () => {
 });
 
 describe("desired-state merge", () => {
+  test("vendor-specific raw fields stay in their runtime bucket and never cross vendors", () => {
+    const { home, ctx, snapshot, desired } = fixtureWorld();
+    // fixture: codex leaky has custom_field, claude leaky does not; they merge
+    const leaky = desired.mcpServers.find((s) => s.id === "leaky")!;
+    expect(leaky.allowedRuntimes.sort()).toEqual(["claude-code", "codex"]);
+    expect(leaky.raw).toEqual({ codex: { custom_field: "keep-me" } });
+
+    // force an update on claude and apply: codex-only field must not be written
+    leaky.command = { executable: "npx", args: ["-y", "some-server", "--v2"] };
+    const plan = buildChangePlan(desired, snapshot, ADAPTERS, ctx, "p");
+    const claudeChange = plan.changes.find(
+      (c) => c.resourceRef === "mcp.leaky" && c.runtime === "claude-code",
+    )!;
+    expect(claudeChange.action).toBe("update");
+    const result = claudeCodeAdapter.apply(ctx, [claudeChange], [leaky]);
+    expect(result.failed).toEqual([]);
+    const written = JSON.parse(
+      fs.readFileSync(path.join(home, ".claude.json"), "utf8"),
+    ).mcpServers.leaky;
+    expect(written.args).toContain("--v2");
+    expect(written.custom_field).toBeUndefined();
+
+    // codex keeps its own bucket
+    const codexChange = plan.changes.find(
+      (c) => c.resourceRef === "mcp.leaky" && c.runtime === "codex",
+    )!;
+    codexAdapter.apply(ctx, [codexChange], [leaky]);
+    const toml = fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8");
+    expect(toml).toContain('custom_field = "keep-me"');
+  });
+
   test("same-id servers with divergent args stay per-runtime (no false drift)", () => {
     const { ctx, snapshot } = fixtureWorld();
     // simulate a vendor-specific variant of the same server id

@@ -7,10 +7,12 @@ import { runDoctor } from "../src/core/doctor/doctor.js";
 import { buildSnapshot } from "../src/core/snapshot.js";
 import { snapshotToDesiredState } from "../src/core/desired.js";
 import { detectDrift } from "../src/core/drift/drift.js";
+import { narrowForAgent } from "../src/core/permissions/capabilities.js";
 import {
   ctxFor,
   makeTempHome,
   seedClaudePlugins,
+  seedClaudePermissions,
   seedFixtureHome,
 } from "./helpers.js";
 
@@ -122,7 +124,7 @@ describe("claude-code plugins", () => {
     expect(omc.exists).toBe(true);
     expect(omc.components).toEqual({
       skills: 2,
-      agents: 1,
+      agents: 2,
       commands: 0,
       hooks: true,
       mcpServers: 1,
@@ -228,6 +230,99 @@ describe("claude-code plugins", () => {
     expect(byRef("plugin.phantom@omc").map((f) => f.category)).toEqual(["unknown_config"]);
     expect(byRef("plugin.oh-my-claudecode@omc")).toEqual([]);
     expect(byRef("plugin.discord@claude-plugins-official")).toEqual([]);
+  });
+});
+
+describe("claude-code permissions", () => {
+  test("maps settings permissions and user agents without secrets", () => {
+    const home = makeTempHome();
+    seedFixtureHome(home);
+    seedClaudePermissions(home);
+    const state = claudeCodeAdapter.read(ctxFor(home));
+    const permissions = state.permissions!;
+
+    expect(permissions.effective).toMatchObject({
+      shell: "allowlist",
+      filesystem: "workspace",
+      network: true,
+      bypassPrompts: false,
+      model: "opus",
+    });
+    expect(permissions.fidelity.shell).toBe("exact");
+    expect(permissions.fidelity.filesystem).toBe("lossy");
+    expect(permissions.rules).toContainEqual(
+      expect.objectContaining({
+        effect: "allow",
+        pattern: "Bash(git *)",
+        sourcePath: expect.stringMatching(/settings\.json$/),
+      }),
+    );
+
+    const reviewer = state.agents.find((agent) => agent.id === "reviewer")!;
+    expect(reviewer).toMatchObject({
+      origin: "user",
+      model: "sonnet",
+      tools: ["Read", "Grep", "mcp__github__search"],
+    });
+    expect(state.agents.find((agent) => agent.id === "bare")).toMatchObject({ origin: "user" });
+    expect(state.agents.find((agent) => agent.id === "bare")?.tools).toBeUndefined();
+    expect(
+      narrowForAgent(permissions.effective, reviewer),
+    ).toMatchObject({ shell: "none", filesystem: "read", mcp: ["github"] });
+    expect(JSON.stringify(state)).not.toContain("sk-P2vyt");
+  });
+
+  test("project bypass mode overrides the user mode", () => {
+    const home = makeTempHome();
+    seedFixtureHome(home);
+    seedClaudePermissions(home);
+    const project = path.join(home, "project");
+    fs.mkdirSync(path.join(project, ".claude"), { recursive: true });
+    fs.writeFileSync(
+      path.join(project, ".claude", "settings.local.json"),
+      JSON.stringify({ permissions: { defaultMode: "bypassPermissions" } }),
+    );
+
+    const state = claudeCodeAdapter.read(ctxFor(home, project));
+    expect(state.permissions?.effective.bypassPrompts).toBe(true);
+    expect(state.permissions?.effective.shell).toBe("full");
+  });
+
+  test("reads enabled plugin hooks and agents", () => {
+    const home = makeTempHome();
+    seedFixtureHome(home);
+    seedClaudePermissions(home);
+    seedClaudePlugins(home);
+    const state = claudeCodeAdapter.read(ctxFor(home));
+
+    const pluginHook = state.hooks.find((hook) => hook.event === "PermissionRequest")!;
+    expect(pluginHook.origin).toBe("plugin:oh-my-claudecode@omc");
+    expect(pluginHook.command).toContain("/oh-my-claudecode/5.1.0");
+    expect(pluginHook.command).not.toContain("$CLAUDE_PLUGIN_ROOT");
+    expect(state.hooks).toContainEqual(
+      expect.objectContaining({ event: "PreToolUse", origin: "user" }),
+    );
+    expect(state.hooks.some((hook) => hook.origin.includes("discord"))).toBe(false);
+
+    expect(state.agents.find((agent) => agent.id === "analyst")).toMatchObject({
+      origin: "plugin:oh-my-claudecode@omc",
+      disallowedTools: ["Write", "Edit"],
+    });
+    expect(state.agents.some((agent) => agent.origin.includes("discord"))).toBe(false);
+  });
+
+  test("uses prompt defaults when no settings exist", () => {
+    const home = makeTempHome();
+    seedFixtureHome(home);
+    const state = claudeCodeAdapter.read(ctxFor(home));
+
+    expect(state.permissions?.effective).toMatchObject({
+      shell: "prompt",
+      filesystem: "prompt",
+      bypassPrompts: false,
+    });
+    expect(state.hooks).toEqual([]);
+    expect(state.agents).toEqual([]);
   });
 });
 

@@ -3,6 +3,7 @@ import path from "node:path";
 import YAML from "yaml";
 import { runDoctor } from "../../core/doctor/doctor.js";
 import { detectDrift } from "../../core/drift/drift.js";
+import { loadPolicy, policyPath, runCheck } from "../../core/policy/policy.js";
 import type { DesiredState, Finding } from "../../core/model/types.js";
 import {
   listProfiles,
@@ -21,6 +22,30 @@ export function runDoctorCommand(opts: {
 }): void {
   const { adapters, ctx, snapshot } = scanNow(opts.vendor, opts.project);
   const findings: Finding[] = runDoctor(snapshot, adapters, ctx);
+  const policyFile = policyPath(ctx.project);
+  if (fs.existsSync(policyFile)) {
+    try {
+      const policy = loadPolicy(policyFile);
+      const report = runCheck(policy, snapshot, policy.metadata.name);
+      let policyIndex = 0;
+      for (const entry of report.items) {
+        if (entry.severity !== "error" && entry.severity !== "warning") continue;
+        policyIndex += 1;
+        findings.push({
+          id: `policy_${policyIndex}`,
+          severity: entry.severity,
+          category: "policy_violation",
+          title: `Policy violation: ${entry.rule}`,
+          message: entry.message,
+          runtime: entry.runtime,
+          resourceRef: entry.subject,
+          suggestedAction: "Run `aem check` for details",
+        });
+      }
+    } catch {
+      /* policy validation is reported by aem check; doctor remains best-effort */
+    }
+  }
 
   // stale profile check across the local store
   for (const name of listProfiles()) {

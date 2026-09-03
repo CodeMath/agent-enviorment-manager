@@ -7,6 +7,7 @@ import type {
   McpServer,
 } from "../model/types.js";
 
+
 const DANGEROUS_EXECUTABLES = new Set(["bash", "sh", "zsh", "fish", "cmd", "powershell"]);
 const DANGEROUS_ARG_PATTERNS = [/rm\s+-rf/, /--dangerously/, /sudo\s/];
 
@@ -121,6 +122,86 @@ export function runDoctor(
   const findings: Finding[] = [];
 
   for (const runtime of snapshot.runtimes) {
+    if (runtime.permissions) {
+      const permissions = runtime.permissions;
+      if (permissions.effective.bypassPrompts === true) {
+        findings.push(
+          finding({
+            severity: "critical",
+            category: "permission_risk",
+            title: `Prompts bypassed in ${runtime.id}`,
+            message: `Prompts are bypassed for ${runtime.id}, allowing actions without approval.`,
+            runtime: runtime.id,
+            resourceRef: "permission.bypassPrompts",
+            suggestedAction:
+              "Disable bypass/skipDangerousModePermissionPrompt or set approval_policy away from never.",
+          }),
+        );
+      }
+      if (
+        permissions.effective.shell === "full" &&
+        permissions.effective.network === true
+      ) {
+        findings.push(
+          finding({
+            severity: "warning",
+            category: "permission_risk",
+            title: `Full shell and network access in ${runtime.id}`,
+            message: `${runtime.id} can execute unrestricted shell commands with network access.`,
+            runtime: runtime.id,
+            resourceRef: "permission.shell",
+            suggestedAction: "Restrict shell access or disable network access where possible.",
+          }),
+        );
+      }
+      // A trusted project is "broad" when it is the home dir, the filesystem
+      // root, or a direct child of either (e.g. ~/Documents): trusting it
+      // trusts every repo underneath.
+      const broad = (permissions.trustedProjects ?? []).filter((p) => {
+        const segments = p.split("/").filter((s) => s !== "" && s !== "~");
+        return segments.length < 2;
+      });
+      if (broad.length > 0) {
+        findings.push(
+          finding({
+            severity: "warning",
+            category: "permission_risk",
+            title: `Broad trusted path(s) in ${runtime.id}`,
+            message: `${runtime.id} trusts ${broad.join(", ")} — every project underneath inherits trust.`,
+            runtime: runtime.id,
+            resourceRef: "permission.trustedProjects",
+            suggestedAction: "Trust specific project directories instead of parent folders.",
+          }),
+        );
+      }
+    }
+    for (const hook of runtime.hooks) {
+      if (hook.event === "PermissionRequest") {
+        findings.push(
+          finding({
+            severity: "warning",
+            category: "hook_risk",
+            title: `PermissionRequest hook from ${hook.origin}`,
+            message: `Hook from ${hook.origin} runs ${hook.command} and can answer permission prompts on the agent's behalf.`,
+            runtime: runtime.id,
+            resourceRef: `hook.${hook.event}`,
+            suggestedAction: "Review the hook command and remove it if it should not influence approvals.",
+          }),
+        );
+      } else if (hook.event === "PreToolUse" && hook.origin.startsWith("plugin:")) {
+        findings.push(
+          finding({
+            severity: "info",
+            category: "hook_risk",
+            title: `Plugin PreToolUse hook from ${hook.origin}`,
+            message: `Hook from ${hook.origin} runs ${hook.command} before tool execution.`,
+            runtime: runtime.id,
+            resourceRef: `hook.${hook.event}`,
+            suggestedAction: "Review the plugin hook before granting it tool access.",
+          }),
+        );
+      }
+    }
     for (const server of runtime.mcpServers) {
       findings.push(...mcpFindings(runtime.id, server, ctx));
     }

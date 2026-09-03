@@ -19,7 +19,10 @@ export type FindingCategory =
   | "unknown_config"
   | "stale_profile"
   | "drift_detected"
-  | "unsupported_version";
+  | "unsupported_version"
+  | "permission_risk"
+  | "hook_risk"
+  | "policy_violation";
 
 export interface Finding {
   id: string;
@@ -126,6 +129,73 @@ export interface PluginPack {
   sourcePath: string;
 }
 
+/* ------------------------- Permissions ------------------------- */
+
+/** Lattice order: none < prompt < allowlist < full. */
+export type ShellAccess = "none" | "prompt" | "allowlist" | "full";
+/** Lattice order: read < prompt < workspace < full. */
+export type FilesystemAccess = "read" | "prompt" | "workspace" | "full";
+/** How faithfully a vendor setting maps onto a capability. */
+export type Fidelity = "exact" | "lossy" | "unknown";
+
+/**
+ * Vendor-neutral capability set. A missing field means the vendor does not
+ * express that capability (not "none"). See _docs/05-permission-layer.md.
+ */
+export interface Capabilities {
+  shell?: ShellAccess;
+  filesystem?: FilesystemAccess;
+  network?: boolean;
+  /** MCP server ids reachable by the agent */
+  mcp?: string[];
+  /** prompts auto-approved / dangerous mode */
+  bypassPrompts?: boolean;
+  model?: string;
+}
+
+export interface PermissionRule {
+  effect: "allow" | "deny" | "ask";
+  /** vendor-native pattern, e.g. "Bash(git *)" */
+  pattern: string;
+  sourcePath: string;
+}
+
+export interface PermissionSurface {
+  /** effective capabilities of the main agent */
+  effective: Capabilities;
+  fidelity: Partial<Record<keyof Capabilities, Fidelity>>;
+  /** vendor label, e.g. Claude defaultMode or Codex "on-request/workspace-write" */
+  mode?: string;
+  rules: PermissionRule[];
+  /** enterprise-managed policy file present (user settings cannot override it) */
+  managedPolicyPath?: string;
+  /** projects the vendor treats as trusted (portable paths) */
+  trustedProjects?: string[];
+}
+
+export type ExtensionOrigin = "user" | "project" | `plugin:${string}`;
+
+export interface HookRegistration {
+  /** vendor event name, e.g. PreToolUse, PermissionRequest, SessionStart */
+  event: string;
+  matcher?: string;
+  /** command line with plugin root variables expanded */
+  command: string;
+  origin: ExtensionOrigin;
+  sourcePath: string;
+}
+
+export interface AgentDefinition {
+  id: string;
+  origin: ExtensionOrigin;
+  path: string;
+  model?: string;
+  /** tool allowlist; undefined = inherits every tool of the main agent */
+  tools?: string[];
+  disallowedTools?: string[];
+  permissionMode?: string;
+}
+
 export interface RuntimeState {
   id: string;
   name: string;
@@ -137,6 +207,10 @@ export interface RuntimeState {
   instructionPacks: InstructionPack[];
   skillPacks: SkillPack[];
   plugins: PluginPack[];
+  /** undefined when the vendor exposes no permission surface the adapter reads */
+  permissions?: PermissionSurface;
+  hooks: HookRegistration[];
+  agents: AgentDefinition[];
   /** adapter-level parse warnings that should surface in scan output */
   warnings: string[];
 }
@@ -171,7 +245,13 @@ export interface DesiredMcpServer {
   command?: McpCommand;
   url?: string;
   env: Record<string, DesiredEnvVar>;
-  raw?: Record<string, unknown>;
+  /**
+   * Unknown vendor fields keyed by the runtime they were read from
+   * (e.g. { codex: { startup_timeout_sec: 15 } }). Apply only writes the
+   * target runtime's own bucket, so vendor-specific keys never leak
+   * across vendors when a server is shared via allowedRuntimes.
+   */
+  raw?: Record<string, Record<string, unknown>>;
 }
 
 export interface DesiredInstruction {
@@ -229,6 +309,63 @@ export interface DesiredState {
     secretHandling: "forbid-inline";
     unknownFields: "preserve";
   };
+}
+
+/* ------------------------- Policy ------------------------- */
+
+export type HookPolicy = "allow" | "review" | "deny";
+
+export interface AgentPolicy {
+  /** upper bound; effective = narrow(main, agent) must not exceed it */
+  ceiling?: Capabilities;
+  /** lower bound the role needs to function */
+  requires?: Pick<Capabilities, "shell" | "filesystem" | "network" | "mcp">;
+}
+
+/** Vendor-neutral permission policy (.aem/policy.yaml). Knows no vendor ids. */
+export interface Policy {
+  schemaVersion: string;
+  kind: "Policy";
+  metadata: {
+    name: string;
+    createdAt: string;
+    scope?: "user" | "project";
+  };
+  /** main-agent ceiling; omitted capability = unconstrained */
+  ceiling: Capabilities;
+  hooks?: {
+    events?: Record<string, HookPolicy>;
+    allowOrigins?: ExtensionOrigin[];
+  };
+  /** keyed by agent id; "*" is the default for agents without an entry */
+  agents?: Record<string, AgentPolicy>;
+  extensions?: {
+    plugins?: { allow?: string[]; deny?: string[] };
+  };
+}
+
+export type CheckSubject =
+  | "main"
+  | `agent:${string}`
+  | `hook:${string}`
+  | `plugin:${string}`;
+
+export interface CheckItem {
+  runtime: string;
+  subject: CheckSubject;
+  severity: Severity;
+  /** policy rule path, e.g. ceiling.shell, agents.reviewer.requires.mcp, hooks.events.PreToolUse */
+  rule: string;
+  message: string;
+  fidelity?: Fidelity;
+}
+
+export interface CheckReport {
+  schemaVersion: string;
+  kind: "CheckReport";
+  policy: string;
+  generatedAt: string;
+  items: CheckItem[];
 }
 
 /* ------------------------- Change plan ------------------------- */

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { runBaselineUpdate } from "./commands/baseline.js";
+import { runCheckCommand } from "./commands/check.js";
 import { runApply, runDiff } from "./commands/diffApply.js";
 import { runDoctorCommand } from "./commands/doctor.js";
 import { runDrift } from "./commands/drift.js";
@@ -67,6 +68,14 @@ program
   .option("--vendor <vendor>", "vendor id (codex, claude, gemini, cursor, ...) or all", "all")
   .option("--force", "overwrite an existing project profile")
   .action((opts) => runInit(opts));
+
+program
+  .command("check")
+  .description("Check local agent permissions, hooks and plugins against a policy")
+  .option("--policy <path>", "policy file (defaults to <cwd>/.aem/policy.yaml)")
+  .option("--vendor <vendor>", "vendor id (codex, claude, gemini, cursor, ...) or all", "all")
+  .option("--json", "machine-readable JSON output")
+  .action((opts) => runCheckCommand(opts));
 
 const profile = program
   .command("profile")

@@ -6,10 +6,12 @@ import { defaultContext, selectAdapters } from "../adapters/registry.js";
 import { runDoctor } from "../core/doctor/doctor.js";
 import { detectDrift } from "../core/drift/drift.js";
 import type {
+  Capabilities,
   DriftReport,
   EnvironmentSnapshot,
   Finding,
 } from "../core/model/types.js";
+import { narrowForAgent } from "../core/permissions/capabilities.js";
 import { buildSnapshot } from "../core/snapshot.js";
 import {
   listProfiles,
@@ -31,6 +33,8 @@ export interface Overview {
   driftSource: "project" | "active" | null;
   profiles: string[];
   activeProfile: string | null;
+  /** effective capabilities per sub-agent, keyed "<runtime>/<agentId>" */
+  agentEffective: Record<string, Capabilities>;
 }
 
 /**
@@ -70,6 +74,14 @@ export function buildOverview(project?: string): Overview {
     /* invalid/missing profile: dashboard still renders without drift */
   }
 
+  const agentEffective: Record<string, Capabilities> = {};
+  for (const r of snapshot.runtimes) {
+    if (!r.permissions) continue;
+    for (const a of r.agents) {
+      agentEffective[`${r.id}/${a.id}`] = narrowForAgent(r.permissions.effective, a);
+    }
+  }
+
   return {
     version: currentVersion(),
     generatedAt: new Date().toISOString(),
@@ -80,6 +92,7 @@ export function buildOverview(project?: string): Overview {
     driftSource,
     profiles: listProfiles(),
     activeProfile: loadConfig().activeProfile ?? null,
+    agentEffective,
   };
 }
 

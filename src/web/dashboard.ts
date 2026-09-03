@@ -74,6 +74,7 @@ export const DASHBOARD_HTML = `<!doctype html>
   <div class="cards" id="cards"></div>
   <section><h2>Runtimes</h2><div id="runtimes"></div></section>
   <section><h2>MCP Servers</h2><div id="mcp"></div></section>
+  <section><h2>Permissions</h2><div id="permissions"></div></section>
   <section><h2>Plugins</h2><div id="plugins"></div></section>
   <section><h2>Findings</h2><div id="findings"></div></section>
   <section><h2>Drift</h2><div id="drift"></div></section>
@@ -93,6 +94,20 @@ function envChips(env) {
     if (ref.source === "env") return '<span class="chip ok">' + esc(name) + '</span>';
     return '<span class="chip">' + esc(name) + '</span>';
   }).join("");
+}
+
+function capChips(c) {
+  if (!c) return '<span class="chip dim">unexpressed</span>';
+  const out = [];
+  const rank = { none: 0, read: 0, prompt: 1, allowlist: 2, workspace: 2, full: 3 };
+  const cls = (v) => rank[v] >= 3 ? "err" : rank[v] >= 2 ? "warn" : "ok";
+  if (c.shell !== undefined) out.push('<span class="chip ' + cls(c.shell) + '">shell ' + esc(c.shell) + "</span>");
+  if (c.filesystem !== undefined) out.push('<span class="chip ' + cls(c.filesystem) + '">fs ' + esc(c.filesystem) + "</span>");
+  if (c.network !== undefined) out.push('<span class="chip ' + (c.network ? "warn" : "ok") + '">net ' + (c.network ? "yes" : "no") + "</span>");
+  if (c.bypassPrompts) out.push('<span class="chip crit">bypass prompts</span>');
+  if (c.mcp !== undefined) out.push('<span class="chip">mcp ' + c.mcp.length + "</span>");
+  if (c.model !== undefined) out.push('<span class="chip">' + esc(c.model) + "</span>");
+  return out.join("");
 }
 
 function render(o) {
@@ -144,6 +159,30 @@ function render(o) {
       "<td>" + (s.enabled ? "" : '<span class="chip dim">disabled</span>') +
       (s.managedBy ? '<span class="chip dim">plugin</span>' : "") + "</td></tr>"
     ).join("") + "</table>";
+
+  const permRuntimes = runtimes.filter((r) => r.permissions);
+  $("permissions").innerHTML = permRuntimes.length === 0 ? '<div class="empty">no permission surface read</div>' :
+    permRuntimes.map((r) => {
+      const p = r.permissions;
+      const lossy = Object.entries(p.fidelity || {}).filter(([, f]) => f === "lossy").map(([k]) => k);
+      const hooks = r.hooks || [];
+      const byOrigin = {};
+      hooks.forEach((h) => { (byOrigin[h.origin] = byOrigin[h.origin] || []).push(h.event); });
+      const hookRows = Object.entries(byOrigin).map(([origin, events]) =>
+        "<tr><td class=\"dim\">hooks</td><td><b>" + esc(origin) + "</b> <span class=\"dim\">(" + events.length + ")</span></td><td>" +
+        [...new Set(events)].map((e) => '<span class="chip ' + (e === "PermissionRequest" || e === "PreToolUse" ? "err" : "") + '">' + esc(e) + "</span>").join("") + "</td></tr>"
+      ).join("");
+      const agentRows = (r.agents || []).map((a) => {
+        const inherits = a.tools === undefined && a.disallowedTools === undefined;
+        return "<tr><td class=\"dim\">agent</td><td><b>" + esc(a.id) + "</b> <span class=\"dim\">[" + esc(a.origin) + "]</span></td><td>" +
+          (inherits ? '<span class="chip warn">inherits main</span>' : capChips((o.agentEffective || {})[r.id + "/" + a.id])) + "</td></tr>";
+      }).join("");
+      return '<div style="margin-bottom:14px"><b>' + esc(r.id) + "</b> " + capChips(p.effective) +
+        ' <span class="dim">' + esc(p.mode || "") + (p.managedPolicyPath ? " · managed policy" : "") +
+        (p.trustedProjects && p.trustedProjects.length ? " · " + p.trustedProjects.length + " trusted project(s)" : "") +
+        (lossy.length ? " · lossy: " + esc(lossy.join(",")) : "") + "</span>" +
+        (agentRows || hookRows ? "<table>" + agentRows + hookRows + "</table>" : "") + "</div>";
+    }).join("");
 
   $("plugins").innerHTML = plugins.length === 0 ? '<div class="empty">none detected</div>' :
     "<table><tr><th>plugin</th><th>runtime</th><th>version</th><th>scope</th><th>components</th><th>source</th><th></th></tr>" +

@@ -6,6 +6,10 @@ import type {
   Severity,
 } from "../core/model/types.js";
 import { tildify } from "../core/storage/paths.js";
+import {
+  describeCapabilities,
+  narrowForAgent,
+} from "../core/permissions/capabilities.js";
 
 const useColor = process.stdout.isTTY && process.env.NO_COLOR === undefined;
 
@@ -122,6 +126,58 @@ export function renderScan(snapshot: EnvironmentSnapshot): string {
         lines.push(
           `- ${bold(p.id)}: ${parts.join(", ")}${comps.length > 0 ? dim(` (${comps.join(", ")})`) : ""}`,
         );
+      }
+    }
+  }
+
+  const anyPerm = snapshot.runtimes.some((r) => r.permissions);
+  if (anyPerm) {
+    lines.push("", bold("Permissions"));
+    for (const r of snapshot.runtimes) {
+      const p = r.permissions;
+      if (!p) continue;
+      const lossy = Object.entries(p.fidelity)
+        .filter(([, f]) => f === "lossy")
+        .map(([k]) => k);
+      const flags = [
+        p.mode ? `mode: ${p.mode}` : "",
+        p.managedPolicyPath ? cyan("managed policy") : "",
+        p.trustedProjects?.length ? `${p.trustedProjects.length} trusted project(s)` : "",
+        lossy.length ? dim(`lossy: ${lossy.join(",")}`) : "",
+      ].filter(Boolean);
+      const eff = p.effective.bypassPrompts
+        ? red(describeCapabilities(p.effective))
+        : describeCapabilities(p.effective);
+      lines.push(`- ${bold(r.id)}: ${eff}${flags.length ? ` ${dim(`(${flags.join(", ")})`)}` : ""}`);
+      for (const a of r.agents) {
+        const narrowed = narrowForAgent(p.effective, a);
+        const inherits = a.tools === undefined && a.disallowedTools === undefined;
+        lines.push(
+          `    agent ${bold(a.id)} ${dim(`[${a.origin}]`)}: ${inherits ? yellow("inherits main") : describeCapabilities(narrowed)}`,
+        );
+      }
+    }
+  }
+
+  const anyHooks = snapshot.runtimes.some((r) => r.hooks.length > 0);
+  if (anyHooks) {
+    lines.push("", bold("Hooks"));
+    for (const r of snapshot.runtimes) {
+      const byOrigin = new Map<string, Map<string, number>>();
+      for (const h of r.hooks) {
+        const events = byOrigin.get(h.origin) ?? new Map<string, number>();
+        events.set(h.event, (events.get(h.event) ?? 0) + 1);
+        byOrigin.set(h.origin, events);
+      }
+      for (const [origin, events] of byOrigin) {
+        const total = [...events.values()].reduce((a, b) => a + b, 0);
+        const list = [...events.entries()]
+          .map(([e, n]) => {
+            const label = n > 1 ? `${e}×${n}` : e;
+            return e === "PermissionRequest" || e === "PreToolUse" ? red(label) : label;
+          })
+          .join(", ");
+        lines.push(`- ${r.id} ${bold(origin)}: ${total} hook(s) ${dim(list)}`);
       }
     }
   }

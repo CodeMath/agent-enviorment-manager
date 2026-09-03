@@ -1,6 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { snapshotToDesiredState } from "../../core/desired.js";
+import {
+  describeCapabilities,
+  policyPath,
+  bypassCurrentlyOn,
+  scaffoldPolicy,
+  serializePolicy,
+} from "../../core/policy/policy.js";
 import { serializeDesiredState } from "../../core/storage/store.js";
 import { bold, dim, green } from "../../output/text.js";
 import { failWith, scanNow } from "../common.js";
@@ -46,6 +53,23 @@ export function runInit(opts: { vendor: string; force?: boolean }): void {
       `${desired.mcpServers.length} MCP server(s), ${desired.instructions.length} instruction(s), ${desired.skills.length} skill(s) captured.\n`,
     ),
   );
+  const policyTarget = policyPath(projectDir);
+  if (fs.existsSync(policyTarget) && !opts.force) {
+    process.stdout.write(dim(`Preserved existing policy: ${policyTarget}\n`));
+  } else {
+    const policy = scaffoldPolicy(snapshot, path.basename(projectDir), "project");
+    fs.writeFileSync(
+      policyTarget,
+      serializePolicy(policy, { bypassCurrentlyOn: bypassCurrentlyOn(snapshot) }),
+    );
+    const hooks = Object.keys(policy.hooks?.events ?? {}).length;
+    const plugins = policy.extensions?.plugins?.allow?.length ?? 0;
+    process.stdout.write(
+      dim(
+        `Policy ceiling: ${describeCapabilities(policy.ceiling)}; ${hooks} hook event(s), ${plugins} plugin(s) captured. Run \`aem check\`.\n`,
+      ),
+    );
+  }
   if (empty) {
     process.stdout.write(
       dim(

@@ -83,7 +83,9 @@ export function snapshotToDesiredState(
           : undefined,
         url: server.url,
         env: desiredEnv(server.env, projectDir),
-        raw: server.raw ? portabilizeDeep(server.raw, projectDir) : undefined,
+        raw: server.raw
+          ? { [runtime.id]: portabilizeDeep(server.raw, projectDir) }
+          : undefined,
       };
       const existing = mcpEntries.find(
         (e) => e.id === server.id && signature(e) === signature(desired),
@@ -92,6 +94,8 @@ export function snapshotToDesiredState(
         if (!existing.allowedRuntimes.includes(runtime.id)) {
           existing.allowedRuntimes.push(runtime.id);
         }
+        // keep this runtime's vendor-specific fields in its own bucket
+        if (desired.raw) existing.raw = { ...existing.raw, ...desired.raw };
       } else {
         mcpEntries.push(desired);
       }

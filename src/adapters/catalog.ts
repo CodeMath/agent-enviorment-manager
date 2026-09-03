@@ -439,6 +439,8 @@ export function createCatalogAdapter(spec: VendorSpec): AgentRuntimeAdapter {
         instructionPacks: installed ? instructions : [],
         skillPacks: installed ? skills : [],
         plugins: [],
+        hooks: [],
+        agents: [],
         warnings,
       };
     },

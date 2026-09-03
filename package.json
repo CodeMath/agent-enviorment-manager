@@ -1,6 +1,6 @@
 {
   "name": "agent-environment-manager",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "aem - vendor-neutral desired state manager for local AI agent environments (Claude Code, Codex)",
   "type": "module",
   "license": "MIT",

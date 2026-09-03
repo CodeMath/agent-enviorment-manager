@@ -25,6 +25,7 @@ import {
   readClaudePlugins,
   readEnabledPlugins,
 } from "./plugins.js";
+import { readClaudePermissions } from "./permissions.js";
 
 const ADAPTER_VERSION = "0.1.0";
 
@@ -116,6 +117,12 @@ export const claudeCodeAdapter: AgentRuntimeAdapter = {
         path.join(ctx.project, ".claude", "settings.json"),
         "json",
       ),
+      configSource(
+        "claude-project-settings-local",
+        "project",
+        path.join(ctx.project, ".claude", "settings.local.json"),
+        "json",
+      ),
       configSource("claude-project-mcp", "project", projectMcpPath(ctx), "json"),
       configSource(
         "claude-project-memory",
@@ -133,6 +140,12 @@ export const claudeCodeAdapter: AgentRuntimeAdapter = {
         "claude-user-agents",
         "user",
         path.join(claudeDir(ctx), "agents"),
+        "directory",
+      ),
+      configSource(
+        "claude-project-agents",
+        "project",
+        path.join(ctx.project, ".claude", "agents"),
         "directory",
       ),
       configSource(
@@ -155,6 +168,14 @@ export const claudeCodeAdapter: AgentRuntimeAdapter = {
           ...pluginRead.mcpServers,
         ]
       : [];
+    const permissionRead = installed
+      ? readClaudePermissions(
+          ctx,
+          pluginRead.plugins,
+          mcpServers.map((server) => server.id),
+          warnings,
+        )
+      : undefined;
 
     const instructions = [
       instructionPack(
@@ -185,6 +206,9 @@ export const claudeCodeAdapter: AgentRuntimeAdapter = {
       instructionPacks: installed ? instructions : [],
       skillPacks: installed ? skills : [],
       plugins: pluginRead.plugins,
+      ...(permissionRead === undefined ? {} : { permissions: permissionRead.permissions }),
+      hooks: permissionRead?.hooks ?? [],
+      agents: permissionRead?.agents ?? [],
       warnings,
     };
   },
@@ -337,6 +361,7 @@ function renderClaudeMcpBlock(
   if (Object.keys(env).length > 0) block.env = env;
   else delete block.env;
 
-  if (d.raw) Object.assign(block, materializeDeep(d.raw, projectDir));
+  const own = d.raw?.["claude-code"];
+  if (own) Object.assign(block, materializeDeep(own, projectDir));
   return block;
 }

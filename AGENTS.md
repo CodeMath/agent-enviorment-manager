@@ -28,7 +28,8 @@ vendor files ──adapter.read()──▶ RuntimeState[] ──buildSnapshot─
 - **Core** (`src/core/`) is vendor-agnostic and pure-ish: `snapshot.ts`, `desired.ts`, `planner/plan.ts`, `drift/drift.ts`, `doctor/doctor.ts`, `storage/*`, `redaction/*`, `version.ts`.
 - **CLI** (`src/cli/`) wires commander commands to core; **web** (`src/web/`) serves a read-only loopback dashboard.
 - Fault isolation: one adapter throwing becomes a runtime `warnings[]` entry, never a failed scan; adapter `doctor()` exceptions are swallowed after core checks.
-- Managed vs observed: only MCP servers on Codex/Claude Code are written by `apply`. Instructions, skills/agents, plugins, config sources, runtime versions, catalog vendors are observed and drift-reported only (drift kinds: `mcp`, `instruction`, `skill`, `plugin`, `runtime-version`). Local servers absent from the profile are never deleted (reported as drift).
+- Managed vs observed: only MCP servers on Codex/Claude Code are written by `apply`. Instructions, skills/agents, plugins, permissions, hooks, config sources, runtime versions, catalog vendors are observed and drift-reported only (drift kinds: `mcp`, `instruction`, `skill`, `plugin`, `runtime-version`).
+- **Permission layer** (`_docs/05-permission-layer.md`): adapters read vendor permission surfaces into `RuntimeState.permissions` (`Capabilities` + per-field `fidelity`), `hooks[]`, `agents[]` (`claude-code/permissions.ts`, `codex/permissions.ts`). `src/core/permissions/capabilities.ts` is the lattice (`meet`/`join`/`exceeds`/`lacks`/`narrowForAgent`); sub-agent effective caps are always derived via `narrowForAgent(main, agent)` — never stored. `src/core/policy/policy.ts` owns `.aem/policy.yaml` (validate/scaffold/serialize/`runCheck`). aem is a policy compiler + auditor, never a runtime enforcer; v0.7 writes no vendor config. Local servers absent from the profile are never deleted (reported as drift).
 
 ## Key Directories
 
@@ -37,6 +38,7 @@ vendor files ──adapter.read()──▶ RuntimeState[] ──buildSnapshot─
 | `src/core/model/types.ts` | Canonical types: `EnvironmentSnapshot`, `RuntimeState`, `McpServer`, `PluginPack`, `DesiredState`, `ChangePlan`, `DriftReport`, `Finding`; `SCHEMA_VERSION` |
 | `src/core/storage/` | `paths.ts` (`~/.aem` layout, `~`/`${PROJECT_ROOT}` portability, firmlink normalization), `store.ts` (profiles/snapshots/config + validation + export guard), `backup.ts`, `audit.ts` |
 | `src/core/redaction/redact.ts` | Secret detection (`isSecret`, `redactDeep`, `containsSecretLooking`) |
+| `src/core/permissions/capabilities.ts`, `src/core/policy/policy.ts` | Capability lattice; policy schema, scaffold, check engine |
 | `src/adapters/shared.ts` | `detectVersion` (cached), `configSource`, `instructionPack`, `skillPacksFromDir`, `normalizeMcpBlock`, `normalizeEnv`, `unknownFields` |
 | `src/cli/commands/*.ts` | One `run<Name>` handler per command; `src/cli/common.ts` holds `defaultContext`, `scanNow`, `confirm`, `failWith` |
 | `src/output/text.ts` | Pure string renderers (scan/findings/plan/drift), TTY color unless `NO_COLOR` |
@@ -58,7 +60,7 @@ AEM_HOME=/tmp/h AEM_NO_EXEC=1 node dist/cli/index.js doctor
 
 Useful env vars: `AEM_HOME` (home override), `AEM_DIR` (store root, default `~/.aem`), `AEM_NO_EXEC=1` (never spawn vendor binaries for `--version`), `NO_COLOR`.
 
-Exit codes: `0` ok · `1` error · `2` doctor error/critical · `3` drift · `4` update available (`update --check`).
+Exit codes: `0` ok · `1` error · `2` doctor error/critical · `3` drift · `4` update available (`update --check`) · `5` policy violation (`check`).
 
 ## Code Conventions & Common Patterns
 
@@ -69,7 +71,8 @@ Exit codes: `0` ok · `1` error · `2` doctor error/critical · `3` drift · `4`
 - **Dependency injection**: adapters and core take an `AdapterContext { home, project, env, allowExec }`; never read `process.env`/`os.homedir()` directly inside adapters or core (tests override `home`).
 - **Secrets**: `EnvVarRef` keeps only `source`/`secret`/`present`; a literal `value` is allowed only when non-secret. Desired-state secrets become `{ source: "env", required: true, value: "redacted" }`. `serializeDesiredState()` is the final guard and refuses to write secret-looking YAML. Never compare or print env values, only names.
 - **Path portability**: store `~` for home and `${PROJECT_ROOT}` for project paths (including embedded occurrences inside JSON strings); compare in portable space via `portabilize(materialize(v))` so `/var` vs `/private/var` never diff. Project instruction/skill paths are `./`-relative.
-- **Vendor fields**: copy the existing MCP block on write so unknown fields survive; unknown read fields go to `raw` after `redactDeep`.
+- **Vendor fields**: copy the existing MCP block on write so unknown fields survive; unknown read fields go to `raw` after `redactDeep`. In profiles `raw` is keyed by runtime (`raw: { codex: {...} }`) and each adapter's `render*McpBlock` writes only its own bucket.
+- **Capabilities**: optional field = vendor does not express it (never treat as `none`). Lattice order shell none<prompt<allowlist<full, filesystem read<prompt<workspace<full. Tag every mapping with `fidelity`; lossy excesses downgrade to warnings in `check`.
 - **Schema artifacts** carry `schemaVersion`, a literal `kind`, and ISO `generatedAt`.
 - **Adding a read-only vendor**: append one `VendorSpec` to `VENDOR_CATALOG` in `src/adapters/catalog.ts` (unique `id`, `presence` dirs, `configFiles`, optional `binary`, `mcp` refs with `key`/`style`, `instructions`, `skillsDirs`). Generic binary names must rely on `presence` dirs only (false-positive guard). Add a case to `test/catalog.test.ts`.
 - **Promoting to a full adapter**: create `src/adapters/<id>/index.ts` implementing every contract member with `canApply: true`, register it in `ALL_ADAPTERS`, and **remove** its `VendorSpec` (duplicate ids break `selectAdapters`).
@@ -100,7 +103,7 @@ Exit codes: `0` ok · `1` error · `2` doctor error/critical · `3` drift · `4`
 
 ## Testing & QA
 
-- Framework: `bun:test`; run `npm test` (or `bun test test/planner.test.ts` for one file). Currently ~57 tests across `adapters`, `catalog`, `integration`, `planner`, `paths`, `redaction`, `version`, `web`.
+- Framework: `bun:test`; run `npm test` (or `bun test test/planner.test.ts` for one file). Currently ~74 tests across `adapters`, `catalog`, `integration`, `planner`, `paths`, `redaction`, `version`, `web`.
 - Fixtures: `test/helpers.ts` — `makeTempHome()` (mkdtemp), `seedFixtureHome(home)` (Codex TOML + Claude JSON + skills + instructions + `project/`), `seedClaudePlugins(home)` (plugin registry with enabled/disabled/missing/other-repo cases), `ctxFor(home, project?)` (`allowExec: false`, env limited to `PATH`/`HOME`). The fixture plants the secret canary `sk-P2vyt…`; every serialized artifact (state, findings, YAML, HTTP payloads, audit) must assert it is absent.
 - Integration (`test/integration.test.ts`) runs `npm run build` in `beforeAll` and executes `node dist/cli/index.js` with `HOME`/`AEM_HOME`=temp, `AEM_NO_EXEC=1`, `NO_COLOR=1`, cwd `<home>/project`; use `{ expectFail: true }` for expected non-zero exits.
 - Invariants tests enforce and new code must keep: `apply --dry-run` leaves files byte-identical; real apply creates exactly one backup equal to the pre-apply file and appends an audit event; unknown vendor fields survive apply; export→import round-trips; `materialize(portabilize(v)) === v`; catalog adapters never appear in a `ChangePlan`; project profiles are rejected by `diff`/`apply` but honored by `drift`/`doctor`.
